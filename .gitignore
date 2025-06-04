@@ -1,0 +1,26 @@
+# Binaries
+file-editor
+file-editor.exe
+*.out
+*.test
+*.prof
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+._*
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+*.swp
+*~
+*.bak
+*.tmp
+
+# Log files
+*.log
+
+# Coverage output
+coverage.out
+coverage.html
