@@ -123,7 +123,9 @@ func (fs *DefaultFileSystemAdapter) WriteFileBytesAtomic(filePath string, conten
 	}
 	// Defer removal of the temporary file in case of errors before rename.
 	// If rename succeeds, this Remove will fail harmlessly (as file no longer exists at tempFile.Name()).
-	defer os.Remove(tempFile.Name())
+	defer func() {
+		_ = os.Remove(tempFile.Name())
+	}()
 
 	// Although os.CreateTemp typically uses 0600, an explicit Chmod can be used
 	// for guarantee if desired, but it's often redundant on POSIX systems.
@@ -136,7 +138,9 @@ func (fs *DefaultFileSystemAdapter) WriteFileBytesAtomic(filePath string, conten
 
 	// 2. Write content to the temporary file.
 	if _, errWrite := tempFile.Write(content); errWrite != nil {
-		tempFile.Close() // Attempt to close before returning
+		if errClose := tempFile.Close(); errClose != nil {
+			return fmt.Errorf("failed to close temporary file %s after write error: %v", tempFile.Name(), errClose)
+		}
 		return fmt.Errorf("failed to write to temporary file %s: %w", tempFile.Name(), errWrite)
 	}
 

@@ -68,7 +68,8 @@ func main() {
 	}()
 
 	// 6. Initialize and Start Transport
-	if cfg.Transport == "http" {
+	switch cfg.Transport {
+	case "http":
 		log.Printf("Initializing HTTP transport on port %d...\n", cfg.Port)
 		// Note: MaxFileSizeMB is a placeholder for the second arg of NewHTTPHandler,
 		// as it currently uses a hardcoded 50MB for HTTP request size.
@@ -116,7 +117,7 @@ func main() {
 			}
 		}()
 
-	} else if cfg.Transport == "stdio" {
+	case "stdio":
 		log.Println("Initializing STDIN/STDOUT JSON-RPC transport...")
 		go func() {
 			stdioHandler := transport.NewStdioHandler(fileService)
@@ -127,7 +128,7 @@ func main() {
 				serverDoneChan <- nil // Stdio handler finished (e.g. EOF)
 			}
 		}()
-	} else {
+	default:
 		log.Printf("CRITICAL: Unsupported transport type: %s\n", cfg.Transport)
 		os.Exit(1) // Should be caught by config validation, but defensive
 	}

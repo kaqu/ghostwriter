@@ -16,19 +16,19 @@ import (
 
 // --- Mock FileSystemAdapter ---
 type mockFileSystemAdapter struct {
-	files                map[string][]byte
-	stats                map[string]*filesystem.FileStats
-	existsShouldFail     bool
-	readShouldFail       bool
-	writeShouldFail      bool
-	statsShouldFail      bool
-	isWritableResult     bool
-	isWritableShouldFail bool
-	isValidUTF8Result    bool
-	listDirShouldFail    bool
-	listDirEntries       map[string][]filesystem.DirEntryInfo
-	readFileErrorForPath map[string]error
-	isInvalidUTF8Content map[string]bool
+	files                    map[string][]byte
+	stats                    map[string]*filesystem.FileStats
+	existsShouldFail         bool
+	readShouldFail           bool
+	writeShouldFail          bool
+	statsShouldFail          bool
+	isWritableResult         bool
+	isWritableShouldFail     bool
+	isValidUTF8Result        bool
+	listDirShouldFail        bool
+	listDirEntries           map[string][]filesystem.DirEntryInfo
+	readFileErrorForPath     map[string]error
+	isInvalidUTF8Content     map[string]bool
 	evalSymlinksPaths        map[string]string
 	evalSymlinksErrorForPath map[string]error
 	// Add more controls as needed
@@ -251,7 +251,9 @@ func setup(t *testing.T) (*DefaultFileOperationService, *mockFileSystemAdapter, 
 
 func cleanup(t *testing.T) {
 	if tempWorkingDir != "" {
-		os.RemoveAll(tempWorkingDir)
+		if err := os.RemoveAll(tempWorkingDir); err != nil {
+			t.Fatalf("failed to remove temp dir: %v", err)
+		}
 	}
 }
 
