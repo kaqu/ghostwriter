@@ -27,6 +27,7 @@ const (
 type FileOperationService interface {
 	ReadFile(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
 	EditFile(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
+	ListFiles(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail)
 }
 
 // DefaultFileOperationService implements the FileOperationService interface.
@@ -74,7 +75,7 @@ func NewDefaultFileOperationService(
 	// Writability check is also good, but fsAdapter.IsWritable can be used by the service itself if needed.
 	// The config validation already does a basic writability check.
 
-	filenameRegex, err := regexp.Compile(`^[^/\\:*?"<>|]+$`)
+	filenameRegex, err := regexp.Compile("^[a-zA-Z0-9._-]+$") // Changed regex
 	if err != nil {
 		// This should not happen with a static regex
 		return nil, fmt.Errorf("failed to compile filename regex: %w", err)
@@ -111,10 +112,48 @@ func (s *DefaultFileOperationService) resolveAndValidatePath(filename string) (s
 	filePath := filepath.Join(s.workingDir, filename)
 	cleanedPath := filepath.Clean(filePath)
 
-	// Path traversal check
+	// Initial check for basic traversal before symlink evaluation
 	if !strings.HasPrefix(cleanedPath, s.workingDir) {
-		return "", errors.NewInvalidParamsError("Path traversal attempt detected.", map[string]interface{}{"filename": filename}, filename, "path_resolution")
+		// This check might be redundant if filenameRegex is strict enough to disallow path chars,
+		// but kept for defense in depth against 'filename' being crafted like 'symlink/../../foo'
+		// if symlink itself points within workdir.
+		return "", errors.NewInvalidParamsError("Path traversal attempt detected (pre-symlink).", map[string]interface{}{"filename": filename}, filename, "path_resolution")
 	}
+
+	resolvedPath, symlinkErr := s.fsAdapter.EvalSymlinks(cleanedPath) // New adapter method
+	if symlinkErr != nil {
+		// Handle errors from EvalSymlinks, e.g., if path doesn't exist after cleaning,
+		// or if a component of the path used as a symlink target does not exist.
+		// It could also be a permission error to EvalSymlinks.
+		// Differentiate between "file not found" type errors vs. "permission" vs. "internal".
+		// For now, treat as a file system error.
+		// os.IsNotExist(symlinkErr) or os.IsPermission(symlinkErr) might be useful here.
+		// Check if the error is because the file itself (or a part of its path) does not exist.
+		// EvalSymlinks can return PathError.
+		if underlyingErr := stdErrors.Unwrap(symlinkErr); underlyingErr != nil {
+			if os.IsNotExist(underlyingErr) {
+				// This means the original cleanedPath or a component of it does not exist.
+				// This is not necessarily a symlink issue, but a general "file not found" for the given path.
+				return "", errors.NewFileNotFoundError(filename, "eval_symlinks_path_not_found")
+			}
+			if os.IsPermission(underlyingErr) {
+				return "", errors.NewPermissionDeniedError(filename, "eval_symlinks_permission")
+			}
+		}
+		// For other errors (e.g. "too many links", "invalid path component")
+		return "", errors.NewFileSystemError(filename, "eval_symlinks", fmt.Sprintf("Error evaluating symlinks: %v", symlinkErr))
+	}
+
+	// Validate that the fully resolved path is still within the working directory.
+	if !strings.HasPrefix(resolvedPath, s.workingDir) {
+		return "", errors.NewInvalidParamsError("Path traversal attempt detected (post-symlink).", map[string]interface{}{"filename": filename, "resolved_path": resolvedPath}, filename, "path_resolution")
+	}
+	// The path returned for actual file operations should still be `cleanedPath`.
+	// The OS handles the symlink resolution during open/read/write.
+	// The check `!strings.HasPrefix(resolvedPath, s.workingDir)` ensures that *if* `cleanedPath` is a symlink,
+	// its ultimate target is confined. This is the correct interpretation.
+
+	// Additional relative path check on cleanedPath (which is relative to s.workingDir effectively)
 	rel, err := filepath.Rel(s.workingDir, cleanedPath)
 	if err != nil {
 		// This is an internal server error, not an invalid parameter from the user.
@@ -497,4 +536,85 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// ListFiles implements the FileOperationService interface.
+func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) {
+	// Request object is currently empty, so no params to validate from req itself.
+
+	dirEntries, err := s.fsAdapter.ListDir(s.workingDir)
+	if err != nil {
+		// This could be permission denied on workingDir itself, or other errors.
+		underlyingErr := err
+		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+			underlyingErr = unwrapped
+		}
+		if os.IsPermission(underlyingErr) {
+			return nil, errors.NewPermissionDeniedError(s.workingDir, "list_dir_working_dir")
+		}
+		return nil, errors.NewFileSystemError(s.workingDir, "list_dir", fmt.Sprintf("Failed to list directory: %v", err))
+	}
+
+	var files []models.FileInfo
+	for _, entry := range dirEntries {
+		if entry.IsDir || entry.IsHidden {
+			continue // Skip directories and hidden files
+		}
+
+		// Basic info from ListDir
+		fileInfo := models.FileInfo{
+			Name:     entry.Name,
+			Size:     entry.Size,
+			Modified: entry.ModTime.UTC().Format(time.RFC3339), // RFC3339 with UTC 'Z'
+			Readable: (entry.Mode & 0400) != 0,                // Owner read permission
+			Writable: (entry.Mode & 0200) != 0,                // Owner write permission
+			Lines:    -1,                                      // Default to -1 (unknown/error)
+		}
+
+		// Determine line count
+		if entry.Size == 0 {
+			fileInfo.Lines = 0 // Empty file has 0 lines (or 1 empty line "" depending on strict interpretation)
+			// Spec for ReadFile with empty file returns 0 lines and "" content.
+			// If SplitLines on "" returns [], then len is 0.
+			// If SplitLines on "\n" returns [""], then len is 1.
+			// Let's stick to len(SplitLines(content)) for consistency.
+			// For a 0-byte file, ReadFileBytes returns [], SplitLines returns [], len is 0. Consistent.
+		} else if entry.Size > s.maxFileSize {
+			fileInfo.Lines = -1 // File too large, lines unknown
+		} else {
+			// Read file content to count lines
+			filePath := filepath.Join(s.workingDir, entry.Name)
+			content, readErr := s.fsAdapter.ReadFileBytes(filePath)
+			if readErr != nil {
+				// Log this error, but don't fail the whole ListFiles operation.
+				// Lines will remain -1.
+				// Example logging: log.Printf("ListFiles: Error reading file %s for line count: %v", entry.Name, readErr)
+				// Based on error types, could set specific line counts (e.g. permission denied vs actual read error)
+				// For now, any error in reading means -1.
+				fileInfo.Lines = -1
+			} else {
+				if !s.fsAdapter.IsValidUTF8(content) {
+					fileInfo.Lines = -1 // Not UTF-8, lines unknown
+				} else {
+					lines := s.fsAdapter.SplitLines(content)
+					fileInfo.Lines = len(lines)
+					if fileInfo.Lines > s.maxLineCount { // Double check, though size check is primary
+						fileInfo.Lines = -1 // Exceeds max line count policy
+					}
+				}
+			}
+		}
+		files = append(files, fileInfo)
+	}
+
+	// Sort files by name
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
+
+	return &models.ListFilesResponse{
+		Files:      files,
+		TotalCount: len(files),
+		Directory:  s.workingDir, // Return the absolute path of the listed directory
+	}, nil
 }

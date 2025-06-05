@@ -31,6 +31,18 @@ type FileSystemAdapter interface {
 	NormalizeNewlines(content []byte) []byte        // Converts \r\n and \r to \n
 	SplitLines(content []byte) []string             // Uses normalized newlines
 	JoinLinesWithNewlines(lines []string) []byte    // Uses \n
+	EvalSymlinks(path string) (string, error)       // New method for symlink evaluation
+	ListDir(path string) ([]DirEntryInfo, error)    // New method for listing directory contents
+}
+
+// DirEntryInfo holds information about a directory entry.
+type DirEntryInfo struct {
+	Name     string
+	IsDir    bool
+	IsHidden bool // Helper based on name
+	Mode     os.FileMode
+	ModTime  time.Time
+	Size     int64
 }
 
 // CheckDirectoryIsWritable performs a robust check if a directory is writable.
@@ -244,3 +256,55 @@ func (fs *DefaultFileSystemAdapter) JoinLinesWithNewlines(lines []string) []byte
 
 // Ensure DefaultFileSystemAdapter implements FileSystemAdapter
 var _ FileSystemAdapter = (*DefaultFileSystemAdapter)(nil)
+
+// EvalSymlinks evaluates symbolic links for the given path.
+func (fs *DefaultFileSystemAdapter) EvalSymlinks(path string) (string, error) {
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		// The error from EvalSymlinks can be os.ErrNotExist, os.ErrPermission, etc.
+		// It might also be a more generic error if a path component is not a directory, etc.
+		// Returning it directly is usually fine, the service layer can interpret it.
+		return "", fmt.Errorf("failed to evaluate symlinks for %s: %w", path, err)
+	}
+	return resolvedPath, nil
+}
+
+// ListDir lists the contents of a directory.
+// It returns a slice of DirEntryInfo, excluding the "." and ".." entries.
+func (fs *DefaultFileSystemAdapter) ListDir(path string) ([]DirEntryInfo, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("directory not found: %s: %w", path, err)
+		}
+		if os.IsPermission(err) {
+			return nil, fmt.Errorf("permission denied reading directory: %s: %w", path, err)
+		}
+		return nil, fmt.Errorf("failed to read directory %s: %w", path, err)
+	}
+
+	var dirEntries []DirEntryInfo
+	for _, entry := range entries {
+		// os.ReadDir does not return "." or ".."
+		info, err := entry.Info() // Get os.FileInfo for more details
+		if err != nil {
+			// This can happen if the file is removed/changed between ReadDir and Info()
+			// or due to permission issues on the specific file.
+			// Log this and continue, or return an error. For now, log and skip.
+			// log.Printf("Warning: could not get info for entry %s in %s: %v", entry.Name(), path, err)
+			// Alternatively, to be safer, we could return the error.
+			// Let's return an error to be safe, as partial listings can be misleading.
+			return nil, fmt.Errorf("failed to get info for entry %s in %s: %w", entry.Name(), path, err)
+		}
+
+		dirEntries = append(dirEntries, DirEntryInfo{
+			Name:     info.Name(),
+			IsDir:    info.IsDir(),
+			IsHidden: strings.HasPrefix(info.Name(), "."),
+			Mode:     info.Mode().Perm(), // Only permission bits
+			ModTime:  info.ModTime(),
+			Size:     info.Size(),
+		})
+	}
+	return dirEntries, nil
+}

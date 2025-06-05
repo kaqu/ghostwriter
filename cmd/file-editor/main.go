@@ -9,6 +9,7 @@ import (
 	"file-editor-server/internal/transport"
 	"fmt"
 	"log"
+	"math"      // Added import
 	"net/http" // Required for http.Server in graceful shutdown
 	"os"
 	"os/signal"
@@ -28,7 +29,7 @@ func main() {
 
 	// 5. Initialize Dependencies
 	fsAdapter := filesystem.NewDefaultFileSystemAdapter()
-	lockManager := lock.NewLockManager(cfg.MaxConcurrentOps, time.Duration(cfg.OperationTimeoutSec)*time.Second)
+	lockManager := lock.NewLockManager(math.MaxInt32, time.Duration(cfg.OperationTimeoutSec)*time.Second) // Changed MaxConcurrentOps
 	fileService, err := service.NewDefaultFileOperationService(fsAdapter, lockManager, cfg)
 	if err != nil {
 		log.Printf("CRITICAL: Failed to initialize file operation service: %v\n", err)
@@ -226,7 +227,7 @@ func logEffectiveConfig(cfg *config.Config) {
 		log.Printf("  HTTP Port: %d\n", cfg.Port)
 	}
 	log.Printf("  Max File Size (MB): %d\n", cfg.MaxFileSizeMB)
-	log.Printf("  Max Concurrent Ops: %d\n", cfg.MaxConcurrentOps)
+	// log.Printf("  Max Concurrent Ops: %d\n", cfg.MaxConcurrentOps) // Removed logging for MaxConcurrentOps
 	log.Printf("  Operation Timeout (sec): %d\n", cfg.OperationTimeoutSec)
 }
 
