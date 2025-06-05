@@ -59,22 +59,7 @@ func (mde mockDirEntryInfo) toDirEntryInfo() filesystem.DirEntryInfo {
 	}
 }
 
-// mockFileInfo implements os.FileInfo (remains useful for other parts of the mock if needed)
-type mockFileInfo struct {
-	name    string
-	size    int64
-	modTime time.Time
-	isDir   bool
-	mode    os.FileMode
-}
-
-func (fi *mockFileInfo) Name() string       { return fi.name }
-func (fi *mockFileInfo) Size() int64        { return fi.size }
-func (fi *mockFileInfo) Mode() os.FileMode  { return fi.mode }
-func (fi *mockFileInfo) ModTime() time.Time { return fi.modTime }
-func (fi *mockFileInfo) IsDir() bool        { return fi.isDir }
-func (fi *mockFileInfo) Sys() interface{}   { return nil }
-
+// mockFileInfo struct and its methods were removed as they were reported unused.
 func newMockFsAdapter() *mockFileSystemAdapter {
 	return &mockFileSystemAdapter{
 		files:                    make(map[string][]byte),
@@ -573,7 +558,7 @@ func TestEditFile_Success_ModifyExisting(t *testing.T) {
 		t.Errorf("Expected LinesModified 1, got %d", resp.LinesModified)
 	}
 
-	finalContent, _ := mockFs.files[fullPath]
+	finalContent := mockFs.files[fullPath] // S1005: unnecessary assignment to the blank identifier
 	expectedFinalContent := "line two replaced\ninserted before line three\nline three\nappended line"
 	if string(finalContent) != expectedFinalContent {
 		t.Errorf("Expected final content %q, got %q", expectedFinalContent, string(finalContent))
@@ -702,7 +687,7 @@ func TestEditFile_Success_DeleteLastLine(t *testing.T) {
 		t.Errorf("Expected NewTotalLines 1, got %d", resp.NewTotalLines)
 	}
 	expectedContent := "line1"
-	finalContent, _ := mockFs.files[fullPath]
+	finalContent := mockFs.files[fullPath] // S1005: unnecessary assignment to the blank identifier
 	if string(finalContent) != expectedContent {
 		t.Errorf("Expected content %q, got %q", expectedContent, string(finalContent))
 	}

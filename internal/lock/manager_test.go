@@ -183,10 +183,6 @@ func TestLockManager_MaxConcurrentOps(t *testing.T) {
 	}
 }
 
-// Helper error types for more specific error checking if needed.
-type timeoutError struct{ error }
-type genericError struct{ error }
-
 func TestLockManager_ConcurrentAcquireRelease(t *testing.T) {
 	lm := NewLockManager(5, testLockTimeout) // Allow multiple concurrent ops
 	numGoroutines := 10
@@ -209,9 +205,18 @@ func TestLockManager_ConcurrentAcquireRelease(t *testing.T) {
 			// Simulate work
 			time.Sleep(time.Duration(10+id%10) * time.Millisecond)
 
-			err = lm.ReleaseLock(filename)
-			if err != nil {
-				t.Errorf("Goroutine %d: ReleaseLock for %s failed: %v", id, filename, err)
+			releaseErr := lm.ReleaseLock(filename)
+			// Using require.NoError for tests is generally good practice for checking errors.
+			// If this ReleaseLock is critical for test correctness, failing immediately is appropriate.
+			if releaseErr != nil {
+				// The original prompt suggested `_ = lm.ReleaseLock(files[i])` or log/assert.
+				// For a test, asserting or requiring no error is usually better than ignoring.
+				// If the test logic specifically expects ReleaseLock to sometimes fail here due
+				// to the nature of concurrency, then this check would be different.
+				// Assuming release should succeed:
+				t.Errorf("Goroutine %d: ReleaseLock for %s failed: %v", id, filename, releaseErr)
+				// For a stricter check that fails the test immediately:
+				// require.NoError(t, releaseErr, fmt.Sprintf("Goroutine %d: ReleaseLock for %s failed unexpectedly", id, filename))
 			}
 		}(i)
 	}

@@ -179,9 +179,3 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 	log.Println("Stdio JSON-RPC handler finished.")
 	return nil
 }
-
-// Helper to handle empty lines or other non-JSON input robustly
-func (h *StdioHandler) processLine(lineBytes []byte, output io.Writer) {
-	// This function body is now mostly integrated into Start() for clarity.
-	// Kept as a placeholder if refactoring is needed later.
-}
