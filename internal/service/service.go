@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	stdErrors "errors"
 	"file-editor-server/internal/config"
 	"file-editor-server/internal/errors"
@@ -360,12 +361,12 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 		return nil, errors.NewInvalidParamsError("Append content contains invalid UTF-8 encoding.", nil, req.Name, "edit_validation")
 	}
 
-	lockErr := s.lockManager.AcquireLock(req.Name, s.opTimeout)
+	lockErr := s.lockManager.AcquireLock(filePath, s.opTimeout)
 	if lockErr != nil {
 		return nil, errors.NewOperationLockFailedError(req.Name, "edit", lockErr.Error())
 	}
 	defer func() {
-		if err := s.lockManager.ReleaseLock(req.Name); err != nil {
+		if err := s.lockManager.ReleaseLock(filePath); err != nil {
 			fmt.Printf("Error releasing lock for file '%s' in defer: %v\n", req.Name, err)
 		}
 	}()
@@ -373,6 +374,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 	var lines []string
 	var fileCreated bool
 	var originalLineCount int
+	newlineStyle := "\n"
 
 	fileExists, fsErr := s.fsAdapter.FileExists(filePath)
 	if fsErr != nil {
@@ -419,6 +421,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 		if !s.fsAdapter.IsValidUTF8(fileContent) {
 			return nil, errors.NewInvalidEncodingError(req.Name, "read_for_edit", "File content is not valid UTF-8")
 		}
+		newlineStyle = s.fsAdapter.DetectLineEnding(fileContent)
 		lines = s.fsAdapter.SplitLines(fileContent)
 		fileCreated = false
 	} else {
@@ -427,6 +430,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 		}
 		lines = []string{}
 		fileCreated = true
+		newlineStyle = "\n"
 	}
 	originalLineCount = len(lines)
 
@@ -503,6 +507,9 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 	}
 
 	finalContentBytes := s.fsAdapter.JoinLinesWithNewlines(lines)
+	if newlineStyle != "\n" {
+		finalContentBytes = bytes.ReplaceAll(finalContentBytes, []byte("\n"), []byte(newlineStyle))
+	}
 	if int64(len(finalContentBytes)) > s.maxFileSize {
 		return nil, errors.NewFileTooLargeError(req.Name, "edit_write", int64(len(finalContentBytes)), int(s.maxFileSize/(1024*1024)))
 	}

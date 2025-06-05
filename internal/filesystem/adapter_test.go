@@ -117,3 +117,24 @@ func TestDefaultFileSystemAdapter_JoinLinesWithNewlines(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultFileSystemAdapter_DetectLineEnding(t *testing.T) {
+	adapter := NewDefaultFileSystemAdapter()
+	tests := []struct {
+		name    string
+		content []byte
+		want    string
+	}{
+		{"lf", []byte("a\nb"), "\n"},
+		{"crlf", []byte("a\r\nb"), "\r\n"},
+		{"cr", []byte("a\rb"), "\r"},
+		{"none", []byte("abc"), "\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := adapter.DetectLineEnding(tt.content); got != tt.want {
+				t.Errorf("DetectLineEnding() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

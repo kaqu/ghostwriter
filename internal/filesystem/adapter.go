@@ -28,6 +28,7 @@ type FileSystemAdapter interface {
 	GetFileStats(filePath string) (*FileStats, error)
 	IsWritable(path string) (bool, error) // For directory writability check
 	IsValidUTF8(content []byte) bool
+	DetectLineEnding(content []byte) string      // Returns "\n", "\r\n", or "\r"
 	NormalizeNewlines(content []byte) []byte     // Converts \r\n and \r to \n
 	SplitLines(content []byte) []string          // Uses normalized newlines
 	JoinLinesWithNewlines(lines []string) []byte // Uses \n
@@ -107,6 +108,21 @@ func (fs *DefaultFileSystemAdapter) ReadFileBytes(filePath string) ([]byte, erro
 // IsValidUTF8 checks if the byte slice is valid UTF-8.
 func (fs *DefaultFileSystemAdapter) IsValidUTF8(content []byte) bool {
 	return utf8.Valid(content)
+}
+
+// DetectLineEnding inspects the content and returns the first detected newline style.
+// It returns "\r\n" if CRLF is found, "\r" if CR-only newlines are found, otherwise "\n".
+func (fs *DefaultFileSystemAdapter) DetectLineEnding(content []byte) string {
+	if bytes.Contains(content, []byte("\r\n")) {
+		return "\r\n"
+	}
+	if bytes.Contains(content, []byte("\r")) {
+		return "\r"
+	}
+	if bytes.Contains(content, []byte("\n")) {
+		return "\n"
+	}
+	return "\n" // Default if no newline found
 }
 
 // WriteFileBytesAtomic writes content to a file atomically.

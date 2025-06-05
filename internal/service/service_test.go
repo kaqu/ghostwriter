@@ -136,6 +136,18 @@ func (m *mockFileSystemAdapter) IsValidUTF8(content []byte) bool {
 	}
 	return m.isValidUTF8Result
 }
+func (m *mockFileSystemAdapter) DetectLineEnding(content []byte) string {
+	if strings.Contains(string(content), "\r\n") {
+		return "\r\n"
+	}
+	if strings.Contains(string(content), "\r") {
+		return "\r"
+	}
+	if strings.Contains(string(content), "\n") {
+		return "\n"
+	}
+	return "\n"
+}
 func (m *mockFileSystemAdapter) NormalizeNewlines(content []byte) []byte {
 	s := strings.ReplaceAll(string(content), "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
