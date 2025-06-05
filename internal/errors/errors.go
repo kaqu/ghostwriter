@@ -261,7 +261,6 @@ func ToJSONRPCError(errDetail *models.ErrorDetail) *models.JSONRPCError {
 			// Example for 'type' or other custom fields if they were part of JSONRPCErrorData:
 			// if typeVal, ok := dataMap["type"].(string); ok { rpcErr.Data.Type = typeVal }
 
-
 		} else {
 			// Fallback if Data is not map[string]interface{} (should ideally not happen)
 			// Create minimal JSONRPCErrorData with details and a new timestamp.
@@ -270,11 +269,9 @@ func ToJSONRPCError(errDetail *models.ErrorDetail) *models.JSONRPCError {
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
 			}
 		}
-	} else {
-		// If errDetail.Data is nil, ensure rpcErr.Data is also appropriately handled or nil.
-		// Depending on requirements, might initialize with a timestamp.
-		// For now, if Data is nil, JSONRPCErrorData will be nil too, which is fine.
 	}
+	// The else branch for "errDetail.Data == nil" was empty and has been removed.
+	// If errDetail.Data is nil, rpcErr.Data remains nil, which is the intended behavior.
 
 	return rpcErr
 }

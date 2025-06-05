@@ -1,8 +1,8 @@
 package config
 
 import (
-	"flag"
 	"file-editor-server/internal/filesystem"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -10,10 +10,10 @@ import (
 
 // Config holds all configurable values for the server.
 type Config struct {
-	WorkingDirectory    string
-	Transport           string
-	Port                int
-	MaxFileSizeMB       int
+	WorkingDirectory string
+	Transport        string
+	Port             int
+	MaxFileSizeMB    int
 	// MaxConcurrentOps    int // Removed as per specification
 	OperationTimeoutSec int
 }
@@ -68,10 +68,8 @@ func (c *Config) Validate() error {
 		if err != nil {
 			return fmt.Errorf("HTTP port %d is not available: %w", c.Port, err)
 		}
-		if err := listener.Close(); err != nil {
-			// Log this minor error if necessary, but port was available
-			// For example: fmt.Fprintf(os.Stderr, "Warning: could not close test listener for port %d: %v\n", c.Port, err)
-		}
+		// Attempt to close the listener and ignore the error, as the port was available.
+		_ = listener.Close()
 	}
 
 	if c.MaxFileSizeMB < 1 || c.MaxFileSizeMB > 100 {

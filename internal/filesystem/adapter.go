@@ -28,11 +28,11 @@ type FileSystemAdapter interface {
 	GetFileStats(filePath string) (*FileStats, error)
 	IsWritable(path string) (bool, error) // For directory writability check
 	IsValidUTF8(content []byte) bool
-	NormalizeNewlines(content []byte) []byte        // Converts \r\n and \r to \n
-	SplitLines(content []byte) []string             // Uses normalized newlines
-	JoinLinesWithNewlines(lines []string) []byte    // Uses \n
-	EvalSymlinks(path string) (string, error)       // New method for symlink evaluation
-	ListDir(path string) ([]DirEntryInfo, error)    // New method for listing directory contents
+	NormalizeNewlines(content []byte) []byte     // Converts \r\n and \r to \n
+	SplitLines(content []byte) []string          // Uses normalized newlines
+	JoinLinesWithNewlines(lines []string) []byte // Uses \n
+	EvalSymlinks(path string) (string, error)    // New method for symlink evaluation
+	ListDir(path string) ([]DirEntryInfo, error) // New method for listing directory contents
 }
 
 // DirEntryInfo holds information about a directory entry.
@@ -70,11 +70,10 @@ func CheckDirectoryIsWritable(path string) error {
 		return fmt.Errorf("error creating temporary file in %s: %w", path, err)
 	}
 	_ = file.Close()
-	errRemove := os.Remove(tmpFilePath)
-	if errRemove != nil {
-		// Log or handle this warning if necessary, but main check passed
-		// For example: log.Printf("Warning: failed to remove temporary test file %s: %v", tmpFilePath, errRemove)
-	}
+	// Attempt to remove the temporary file. The error is ignored as the primary purpose
+	// of this function is the writability check, which passed if we reached here.
+	// This addresses staticcheck SA9003 for an empty branch.
+	_ = os.Remove(tmpFilePath)
 	return nil
 }
 

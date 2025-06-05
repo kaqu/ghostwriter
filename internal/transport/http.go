@@ -261,10 +261,10 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		if err := decoder.Decode(&req); err != nil && err != io.EOF { // EOF is fine for empty or {} body
 			// Handle cases where body is not an empty JSON object e.g. `[]` or `"string"`
 			if _, ok := err.(*json.SyntaxError); ok || strings.Contains(err.Error(), "cannot unmarshal") {
-                 errDetail := errors.NewParseError(fmt.Sprintf("Request body must be an empty JSON object {} or empty: %v", err))
-                 writeJSONErrorResponse(w, http.StatusBadRequest, errDetail)
-                 return
-            }
+				errDetail := errors.NewParseError(fmt.Sprintf("Request body must be an empty JSON object {} or empty: %v", err))
+				writeJSONErrorResponse(w, http.StatusBadRequest, errDetail)
+				return
+			}
 			// For other decode errors
 			errDetail := errors.NewParseError(fmt.Sprintf("Failed to decode request body for list_files: %v", err))
 			writeJSONErrorResponse(w, http.StatusBadRequest, errDetail)

@@ -31,7 +31,7 @@ type LockInfo struct {
 
 // LockManager manages file locks to control concurrent access.
 type LockManager struct {
-	locks              sync.Map // Stores filename (string) -> *LockInfo
+	locks              sync.Map   // Stores filename (string) -> *LockInfo
 	mu                 sync.Mutex // Protects currentLockCount
 	currentLockCount   int
 	maxConcurrentOps   int

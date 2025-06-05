@@ -182,7 +182,6 @@ func TestHTTPHandler_handleReadFile_WrongMethod(t *testing.T) {
 	}
 }
 
-
 func TestHTTPHandler_handleEditFile_Success(t *testing.T) {
 	mockService := &mockFileOperationService{
 		EditFileFunc: func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail) {
@@ -227,7 +226,9 @@ func TestHTTPHandler_handleEditFile_ServiceError(t *testing.T) {
 
 	reqBody := `{"name": "badedit.txt", "edits": [{"line": 0, "operation": "insert", "content": "fail"}]}` // Line 0 is invalid
 	resp, err := http.Post(server.URL, "application/json", bytes.NewBufferString(reqBody))
-	if err != nil {t.Fatalf("POST request failed: %v", err)}
+	if err != nil {
+		t.Fatalf("POST request failed: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusBadRequest { // InvalidParams maps to 400
