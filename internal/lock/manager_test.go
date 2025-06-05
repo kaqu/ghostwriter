@@ -152,7 +152,6 @@ func TestLockManager_MaxConcurrentOps(t *testing.T) {
 		t.Errorf("expected error message '%s', got '%s'", expectedErrorMsg, err.Error())
 	}
 
-
 	if duration < veryShortTimeout {
 		t.Errorf("AcquireLock for %s returned too quickly, duration %v", files[maxOps], duration)
 	}
@@ -184,11 +183,9 @@ func TestLockManager_MaxConcurrentOps(t *testing.T) {
 	}
 }
 
-
 // Helper error types for more specific error checking if needed.
 type timeoutError struct{ error }
 type genericError struct{ error }
-
 
 func TestLockManager_ConcurrentAcquireRelease(t *testing.T) {
 	lm := NewLockManager(5, testLockTimeout) // Allow multiple concurrent ops
@@ -230,7 +227,6 @@ func TestLockManager_ConcurrentAcquireRelease(t *testing.T) {
 	}
 }
 
-
 func TestLockManager_CleanupExpiredLocks(t *testing.T) {
 	shortExpiry := 50 * time.Millisecond
 	lm := NewLockManager(2, shortExpiry)
@@ -255,7 +251,6 @@ func TestLockManager_CleanupExpiredLocks(t *testing.T) {
 	} else {
 		t.Fatalf("Could not retrieve lock for %s to modify AcquiredAt", file1)
 	}
-
 
 	if lm.GetCurrentLockCount() != 2 {
 		t.Fatalf("Expected 2 locks initially, got %d", lm.GetCurrentLockCount())
@@ -298,56 +293,55 @@ func TestLockManager_CleanupExpiredLocks(t *testing.T) {
 }
 
 func TestLockManager_AcquireReleaseStress(t *testing.T) {
-    lm := NewLockManager(10, 200*time.Millisecond) // Increased maxOps for stress
-    numGoroutines := 50                           // Many goroutines
-    iterations := 20                              // Each goroutine acquires/releases multiple times
-    files := make([]string, numGoroutines/2)      // Create contention
-    for i := range files {
-        files[i] = fmt.Sprintf("stressfile%d.txt", i)
-    }
+	lm := NewLockManager(10, 200*time.Millisecond) // Increased maxOps for stress
+	numGoroutines := 50                            // Many goroutines
+	iterations := 20                               // Each goroutine acquires/releases multiple times
+	files := make([]string, numGoroutines/2)       // Create contention
+	for i := range files {
+		files[i] = fmt.Sprintf("stressfile%d.txt", i)
+	}
 
-    var wg sync.WaitGroup
-    for i := 0; i < numGoroutines; i++ {
-        wg.Add(1)
-        go func(goroutineID int) {
-            defer wg.Done()
-            for j := 0; j < iterations; j++ {
-                filename := files[(goroutineID+j)%len(files)] // Cycle through files
+	var wg sync.WaitGroup
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				filename := files[(goroutineID+j)%len(files)] // Cycle through files
 
-                lockAttemptTimeout := 100 * time.Millisecond // Shorter timeout for individual attempt
-                // For stress test, make timeout slightly random to vary contention
-                // #nosec G404 -- fine for test
-                lockAttemptTimeout = time.Duration(rand.Intn(50)+80) * time.Millisecond
+				lockAttemptTimeout := 100 * time.Millisecond // Shorter timeout for individual attempt
+				// For stress test, make timeout slightly random to vary contention
+				// #nosec G404 -- fine for test
+				lockAttemptTimeout = time.Duration(rand.Intn(50)+80) * time.Millisecond
 
+				err := lm.AcquireLock(filename, lockAttemptTimeout)
+				if err == nil {
+					// Simulate some work
+					// #nosec G404 -- fine for test
+					time.Sleep(time.Duration(rand.Intn(10)+1) * time.Millisecond)
 
-                err := lm.AcquireLock(filename, lockAttemptTimeout)
-                if err == nil {
-                    // Simulate some work
-                     // #nosec G404 -- fine for test
-                    time.Sleep(time.Duration(rand.Intn(10)+1) * time.Millisecond)
+					releaseErr := lm.ReleaseLock(filename)
+					if releaseErr != nil {
+						// This is a critical error in a stress test
+						t.Errorf("Goroutine %d: Failed to release lock for %s: %v", goroutineID, filename, releaseErr)
+					}
+				} else {
+					// Timeouts are acceptable under heavy stress, so just log them
+					// t.Logf("Goroutine %d: Failed to acquire lock for %s (timeout: %v): %v", goroutineID, filename, lockAttemptTimeout, err)
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 
-                    releaseErr := lm.ReleaseLock(filename)
-                    if releaseErr != nil {
-                        // This is a critical error in a stress test
-                        t.Errorf("Goroutine %d: Failed to release lock for %s: %v", goroutineID, filename, releaseErr)
-                    }
-                } else {
-                    // Timeouts are acceptable under heavy stress, so just log them
-                    // t.Logf("Goroutine %d: Failed to acquire lock for %s (timeout: %v): %v", goroutineID, filename, lockAttemptTimeout, err)
-                }
-            }
-        }(i)
-    }
-    wg.Wait()
-
-    // After all operations, all locks should be released.
-    if lm.GetCurrentLockCount() != 0 {
-        t.Errorf("Expected final lock count to be 0, got %d", lm.GetCurrentLockCount())
-        lm.locks.Range(func(key, value interface{}) bool {
-            t.Logf("Lingering lock: %s, Info: %+v", key, value.(*LockInfo))
-            return true
-        })
-    }
+	// After all operations, all locks should be released.
+	if lm.GetCurrentLockCount() != 0 {
+		t.Errorf("Expected final lock count to be 0, got %d", lm.GetCurrentLockCount())
+		lm.locks.Range(func(key, value interface{}) bool {
+			t.Logf("Lingering lock: %s, Info: %+v", key, value.(*LockInfo))
+			return true
+		})
+	}
 }
 
 func TestLockManager_GlobalCapacityTimeoutThenAcquire(t *testing.T) {
@@ -386,7 +380,7 @@ func TestLockManager_GlobalCapacityTimeoutThenAcquire(t *testing.T) {
 	// Use a longer timeout for file2's lock itself, the key is that the *initial* wait for global capacity should be short.
 	// The AcquireLock's timeout parameter is for the *entire operation* of acquiring the lock.
 	// The internal polling for global capacity uses shortPollInterval and respects the deadline.
-	err := lm.AcquireLock(file2, slightlyLongerThanVS + 100*time.Millisecond) // Total timeout for file2
+	err := lm.AcquireLock(file2, slightlyLongerThanVS+100*time.Millisecond) // Total timeout for file2
 	duration := time.Since(startTime)
 
 	if err != nil {

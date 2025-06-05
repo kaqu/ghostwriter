@@ -1,26 +1,26 @@
 package service
 
 import (
+	stdErrors "errors"
 	"file-editor-server/internal/config"
 	"file-editor-server/internal/errors"
 	"file-editor-server/internal/filesystem"
 	"file-editor-server/internal/lock"
 	"file-editor-server/internal/models"
-	stdErrors "errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
-	"os"
 )
 
 const (
-	defaultMaxLineCount = 100000 // Default max line count if not specified in config (though config has a default)
+	defaultMaxLineCount      = 100000 // Default max line count if not specified in config (though config has a default)
 	defaultMaxFilenameLength = 255
-	maxEditsAllowed     = 1000
+	maxEditsAllowed          = 1000
 )
 
 // FileOperationService defines the interface for file operations.
@@ -82,7 +82,7 @@ func NewDefaultFileOperationService(
 	}
 
 	maxLineCount := defaultMaxLineCount // Consider taking this from config if added there
-										// For now, using a const. The problem desc implies it's a service-level concern.
+	// For now, using a const. The problem desc implies it's a service-level concern.
 
 	return &DefaultFileOperationService{
 		fsAdapter:     fs,
@@ -167,7 +167,6 @@ func (s *DefaultFileOperationService) resolveAndValidatePath(filename string) (s
 
 	return cleanedPath, nil
 }
-
 
 // ReadFile implements the FileOperationService interface.
 func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
@@ -262,23 +261,23 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*mod
 			req.Name, "read_validation",
 		)
 	}
-    if totalLineCount == 0 && startLine > 1 {
-        return nil, errors.NewInvalidParamsError(
+	if totalLineCount == 0 && startLine > 1 {
+		return nil, errors.NewInvalidParamsError(
 			fmt.Sprintf("start_line %d is invalid for an empty file.", startLine),
 			map[string]interface{}{"filename": req.Name, "start_line": startLine, "total_lines": totalLineCount},
 			req.Name, "read_validation",
 		)
-    }
-     if totalLineCount == 0 && startLine == 1 {
-        endLine = 1
-    }
+	}
+	if totalLineCount == 0 && startLine == 1 {
+		endLine = 1
+	}
 
 	if endLine > totalLineCount {
 		endLine = totalLineCount
 	}
-    // At this point, startLine and endLine hold the final semantic range.
-    // For empty file, full request: startLine=1, endLine=0.
-    // For 1-line file, full request: startLine=1, endLine=1.
+	// At this point, startLine and endLine hold the final semantic range.
+	// For empty file, full request: startLine=1, endLine=0.
+	// For 1-line file, full request: startLine=1, endLine=1.
 
 	responseStartLine := startLine
 	responseEndLine := endLine
@@ -298,7 +297,7 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*mod
 		if sliceEndIdx > totalLineCount { // Should not happen if endLine is capped
 			sliceEndIdx = totalLineCount
 		}
-        // If semantic range was 1-0 (empty file), sliceStartIdx=0, sliceEndIdx=0. Correct.
+		// If semantic range was 1-0 (empty file), sliceStartIdx=0, sliceEndIdx=0. Correct.
 		if sliceStartIdx > sliceEndIdx {
 			selectedLines = []string{} // e.g. startLine=1, endLine=0 -> sliceStartIdx=0, sliceEndIdx=0
 		} else {
@@ -438,12 +437,9 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 		return sortedEdits[i].Line > sortedEdits[j].Line
 	})
 
-	// linesModifiedCount := 0 // This specific counter was causing "declared and not used"
-
 	for _, edit := range sortedEdits {
 		lineIndex := edit.Line - 1
 		currentLineCount := len(lines)
-		// opChangedLineCount := false // This was also unused
 
 		switch edit.Operation {
 		case "replace":
@@ -454,7 +450,6 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 			}
 			if lines[lineIndex] != edit.Content {
 				lines[lineIndex] = edit.Content
-				// linesModifiedCount++ // Removed this to use overall diff later
 			}
 		case "insert":
 			if lineIndex < 0 || lineIndex > currentLineCount {
@@ -463,7 +458,6 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			lines = append(lines[:lineIndex], append([]string{edit.Content}, lines[lineIndex:]...)...)
-			// opChangedLineCount = true
 		case "delete":
 			if currentLineCount == 0 {
 				return nil, errors.NewInvalidParamsError(
@@ -476,18 +470,14 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			lines = append(lines[:lineIndex], lines[lineIndex+1:]...)
-			// opChangedLineCount = true
 		}
-		// if opChangedLineCount {} // temp use
 	}
-
-	// linesAfterEditsCount := len(lines) // This was unused
 
 	if req.Append != "" {
 		appendLines := s.fsAdapter.SplitLines([]byte(req.Append))
 		if len(appendLines) == 1 && appendLines[0] == "" && req.Append != "" && req.Append != "\n" {
 		} else if len(appendLines) == 0 && req.Append != "" {
-        }
+		}
 		lines = append(lines, appendLines...)
 	}
 
@@ -566,9 +556,9 @@ func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) (*m
 			Name:     entry.Name,
 			Size:     entry.Size,
 			Modified: entry.ModTime.UTC().Format(time.RFC3339), // RFC3339 with UTC 'Z'
-			Readable: (entry.Mode & 0400) != 0,                // Owner read permission
-			Writable: (entry.Mode & 0200) != 0,                // Owner write permission
-			Lines:    -1,                                      // Default to -1 (unknown/error)
+			Readable: (entry.Mode & 0400) != 0,                 // Owner read permission
+			Writable: (entry.Mode & 0200) != 0,                 // Owner write permission
+			Lines:    -1,                                       // Default to -1 (unknown/error)
 		}
 
 		// Determine line count
@@ -586,11 +576,8 @@ func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) (*m
 			filePath := filepath.Join(s.workingDir, entry.Name)
 			content, readErr := s.fsAdapter.ReadFileBytes(filePath)
 			if readErr != nil {
-				// Log this error, but don't fail the whole ListFiles operation.
-				// Lines will remain -1.
-				// Example logging: log.Printf("ListFiles: Error reading file %s for line count: %v", entry.Name, readErr)
-				// Based on error types, could set specific line counts (e.g. permission denied vs actual read error)
-				// For now, any error in reading means -1.
+				// If reading the file for line count fails, Lines remains -1.
+				// This error is not returned to the client for ListFiles, but could be logged server-side if desired.
 				fileInfo.Lines = -1
 			} else {
 				if !s.fsAdapter.IsValidUTF8(content) {

@@ -47,7 +47,6 @@ func (m *mockStdioFileOperationService) ListFiles(req models.ListFilesRequest) (
 	return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/mock/stdio/dir"}, nil
 }
 
-
 func runStdioTest(t *testing.T, handler *StdioHandler, input string) string {
 	var outputBuffer bytes.Buffer
 	inputBuffer := strings.NewReader(input)
@@ -266,9 +265,9 @@ func TestStdioHandler_MultipleRequests(t *testing.T) {
 	handler := NewStdioHandler(mockService)
 
 	input := `{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file1.txt"}, "id": "req1"}` + "\n" +
-	         `{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file2.txt"}, "id": "req2"}` + "\n" +
-			 `this is not json` + "\n" + // Should generate parse error
-			 `{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file3.txt"}, "id": "req3"}` + "\n"
+		`{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file2.txt"}, "id": "req2"}` + "\n" +
+		`this is not json` + "\n" + // Should generate parse error
+		`{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file3.txt"}, "id": "req3"}` + "\n"
 
 	outputStr := runStdioTest(t, handler, input)
 	outputs := strings.Split(strings.TrimSpace(outputStr), "\n")
@@ -279,28 +278,36 @@ func TestStdioHandler_MultipleRequests(t *testing.T) {
 
 	// Check first response
 	var resp1 models.JSONRPCResponse
-	if err := json.Unmarshal([]byte(outputs[0]), &resp1); err != nil {t.Fatalf("Unmarshal resp1 failed: %v", err)}
+	if err := json.Unmarshal([]byte(outputs[0]), &resp1); err != nil {
+		t.Fatalf("Unmarshal resp1 failed: %v", err)
+	}
 	if resp1.ID != "req1" || resp1.Error != nil || resp1.Result.(map[string]interface{})["content"] != "content 1 for file1.txt" {
 		t.Errorf("Unexpected response 1: %+v", resp1)
 	}
 
 	// Check second response
 	var resp2 models.JSONRPCResponse
-	if err := json.Unmarshal([]byte(outputs[1]), &resp2); err != nil {t.Fatalf("Unmarshal resp2 failed: %v", err)}
+	if err := json.Unmarshal([]byte(outputs[1]), &resp2); err != nil {
+		t.Fatalf("Unmarshal resp2 failed: %v", err)
+	}
 	if resp2.ID != "req2" || resp2.Error != nil || resp2.Result.(map[string]interface{})["content"] != "content 2 for file2.txt" {
 		t.Errorf("Unexpected response 2: %+v", resp2)
 	}
 
 	// Check third response (parse error)
 	var resp3 models.JSONRPCResponse
-	if err := json.Unmarshal([]byte(outputs[2]), &resp3); err != nil {t.Fatalf("Unmarshal resp3 failed: %v", err)}
+	if err := json.Unmarshal([]byte(outputs[2]), &resp3); err != nil {
+		t.Fatalf("Unmarshal resp3 failed: %v", err)
+	}
 	if resp3.Error == nil || resp3.Error.Code != errors.CodeParseError {
 		t.Errorf("Expected parse error for response 3: %+v", resp3)
 	}
 
 	// Check fourth response
 	var resp4 models.JSONRPCResponse
-	if err := json.Unmarshal([]byte(outputs[3]), &resp4); err != nil {t.Fatalf("Unmarshal resp4 failed: %v", err)}
+	if err := json.Unmarshal([]byte(outputs[3]), &resp4); err != nil {
+		t.Fatalf("Unmarshal resp4 failed: %v", err)
+	}
 	if resp4.ID != "req3" || resp4.Error != nil || resp4.Result.(map[string]interface{})["content"] != "content 3 for file3.txt" {
 		t.Errorf("Unexpected response 4: %+v", resp4)
 	}
@@ -318,9 +325,9 @@ func TestStdioHandler_EmptyLineInput(t *testing.T) {
 	}
 	handler := NewStdioHandler(mockService)
 	input := "\n" + // Empty line
-	         `{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file.txt"}, "id": "r1"}` + "\n" +
-			 "\n   \n" + // Lines with only whitespace
-			 `{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file2.txt"}, "id": "r2"}` + "\n"
+		`{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file.txt"}, "id": "r1"}` + "\n" +
+		"\n   \n" + // Lines with only whitespace
+		`{"jsonrpc": "2.0", "method": "read_file", "params": {"name": "file2.txt"}, "id": "r2"}` + "\n"
 
 	outputStr := runStdioTest(t, handler, input)
 	outputs := strings.Split(strings.TrimSpace(outputStr), "\n")
@@ -330,10 +337,18 @@ func TestStdioHandler_EmptyLineInput(t *testing.T) {
 	}
 	// Further checks on resp content if necessary
 	var resp1 models.JSONRPCResponse
-	if err := json.Unmarshal([]byte(outputs[0]), &resp1); err != nil {t.Fatalf("Unmarshal resp1 failed: %v", err)}
-	if resp1.ID != "r1" {t.Errorf("Resp1 ID mismatch: %+v", resp1) }
+	if err := json.Unmarshal([]byte(outputs[0]), &resp1); err != nil {
+		t.Fatalf("Unmarshal resp1 failed: %v", err)
+	}
+	if resp1.ID != "r1" {
+		t.Errorf("Resp1 ID mismatch: %+v", resp1)
+	}
 
 	var resp2 models.JSONRPCResponse
-	if err := json.Unmarshal([]byte(outputs[1]), &resp2); err != nil {t.Fatalf("Unmarshal resp2 failed: %v", err)}
-	if resp2.ID != "r2" {t.Errorf("Resp2 ID mismatch: %+v", resp2) }
+	if err := json.Unmarshal([]byte(outputs[1]), &resp2); err != nil {
+		t.Fatalf("Unmarshal resp2 failed: %v", err)
+	}
+	if resp2.ID != "r2" {
+		t.Errorf("Resp2 ID mismatch: %+v", resp2)
+	}
 }

@@ -31,7 +31,7 @@ type LockInfo struct {
 
 // LockManager manages file locks to control concurrent access.
 type LockManager struct {
-	locks              sync.Map // Stores filename (string) -> *LockInfo
+	locks              sync.Map   // Stores filename (string) -> *LockInfo
 	mu                 sync.Mutex // Protects currentLockCount
 	currentLockCount   int
 	maxConcurrentOps   int
@@ -168,7 +168,6 @@ func (lm *LockManager) CleanupExpiredLocks() {
 					lm.currentLockCount--
 				}
 				lm.mu.Unlock()
-				// fmt.Printf("Cleaned up expired lock for %s\n", filename) // For debugging
 			}
 		}
 		return true

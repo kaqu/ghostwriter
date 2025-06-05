@@ -9,7 +9,7 @@ import (
 	"file-editor-server/internal/transport"
 	// "fmt" // Removed as it's unused
 	"log"
-	"math"      // Added import
+	"math"     // Added import
 	"net/http" // Required for http.Server in graceful shutdown
 	"os"
 	"os/signal"
@@ -36,11 +36,6 @@ func main() {
 		os.Exit(1)
 	}
 	log.Println("Core services initialized successfully.")
-
-	// --- Shutdown context ---
-	// Create a context that can be cancelled for graceful shutdown
-	// mainCtx, cancel := context.WithCancel(context.Background())
-	// defer cancel() // Ensure all paths cancel the context
 
 	// 7. Setup and wait for shutdown signal
 	// This will be slightly different for HTTP vs stdio regarding server instance
@@ -149,14 +144,13 @@ func main() {
 		// Add a small buffer to the overall shutdown timeout for cleanup tasks
 		// totalShutdownDeadline := time.Now().Add(shutdownTimeout + 2*time.Second)
 
-		// shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second // This is the redundant declaration
-
 		if cfg.Transport == "http" && httpServer != nil {
 			log.Println("Attempting to gracefully shut down HTTP server...")
-			ctx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
-			defer cancelShutdown() // Ensure context is cancelled to free resources
+			// Use a timeout for the shutdown process
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer shutdownCancel() // Ensure context is cancelled to free resources
 
-			if err := httpServer.Shutdown(ctx); err != nil {
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
 				log.Printf("HTTP server graceful shutdown error: %v\n", err)
 			} else {
 				log.Println("HTTP server gracefully stopped.")
@@ -172,14 +166,6 @@ func main() {
 			// For now, rely on external closure of stdin or process termination.
 			// In a real daemon, you might send a specific "shutdown" JSON-RPC message if the protocol supports it.
 		}
-
-		// Wait for the server goroutine to finish, or timeout
-		// select {
-		// case <-serverDoneChan:
-		//	log.Println("Server goroutine finished.")
-		// case <-time.After(shutdownTimeout):
-		//	log.Println("Timeout waiting for server goroutine to finish.")
-		// }
 
 	case err := <-serverDoneChan:
 		if err != nil {

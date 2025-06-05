@@ -17,7 +17,7 @@ func TestDefaultFileSystemAdapter_IsValidUTF8(t *testing.T) {
 		{"valid utf-8", []byte("hello, 世界"), true},
 		{"invalid utf-8 sequence", []byte{0xff, 0xfe, 0xfd}, false},
 		{"valid partial utf-8", []byte("abc\xe2\x82\xac"), true}, // Euro sign
-		{"invalid continuation byte", []byte{0xe2, 0x82}, false},   // Incomplete Euro sign
+		{"invalid continuation byte", []byte{0xe2, 0x82}, false}, // Incomplete Euro sign
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestDefaultFileSystemAdapter_SplitLines(t *testing.T) {
 		{"content with empty lines", []byte("line1\n\nline3\n"), []string{"line1", "", "line3"}},
 		{"content starting with newline", []byte("\nline1\nline2"), []string{"", "line1", "line2"}},
 		{"content ending with multiple newlines", []byte("line1\n\n"), []string{"line1", ""}}, // "line1\n\n" -> normalized "line1\n\n" -> split ["line1", "", ""] -> trailing "" removed -> ["line1", ""]
-		{"only a newline", []byte("\n"), []string{""}}, // "\n" -> normalized "\n" -> split ["", ""] -> special case rule -> [""]
+		{"only a newline", []byte("\n"), []string{""}},                                        // "\n" -> normalized "\n" -> split ["", ""] -> special case rule -> [""]
 		{"only crlf", []byte("\r\n"), []string{""}},
 		{"only cr", []byte("\r"), []string{""}},
 		{"two newlines", []byte("\n\n"), []string{"", ""}}, // "\n\n" -> split ["", "", ""] -> trailing removed -> ["", ""]
@@ -106,7 +106,7 @@ func TestDefaultFileSystemAdapter_JoinLinesWithNewlines(t *testing.T) {
 		{"single line", []string{"hello"}, []byte("hello")},
 		{"multiple lines", []string{"line1", "line2", "line3"}, []byte("line1\nline2\nline3")},
 		{"lines with empty strings", []string{"line1", "", "line3"}, []byte("line1\n\nline3")},
-		{"single empty string", []string{""}, []byte("")}, // string.Join([""], "\n") is ""
+		{"single empty string", []string{""}, []byte("")},                // string.Join([""], "\n") is ""
 		{"multiple empty strings", []string{"", "", ""}, []byte("\n\n")}, // string.Join(["", "", ""], "\n") is "\n\n"
 	}
 	for _, tt := range tests {

@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	// "os" // Removed
-	// "strings" // Removed
 	"time"
 )
 
@@ -95,8 +93,6 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 			continue
 		}
 
-
-		// var serviceReqData interface{} // Removed as it was not strictly needed
 		var serviceRespData interface{}
 		var serviceErr *models.ErrorDetail
 
@@ -127,19 +123,16 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 				if err := json.Unmarshal(jsonReq.Params, &temp); err == nil {
 					// if it's some other valid JSON that is not an empty object, it's an error
 					if _, isMap := temp.(map[string]interface{}); !isMap || len(temp.(map[string]interface{})) > 0 {
-						 serviceErr = errors.NewInvalidParamsError("Parameters for list_files must be an empty JSON object or null.", nil)
+						serviceErr = errors.NewInvalidParamsError("Parameters for list_files must be an empty JSON object or null.", nil)
 					}
 				} else { // Not valid JSON at all
-					 serviceErr = errors.NewInvalidParamsError(fmt.Sprintf("Invalid params for list_files: %v", err), nil)
+					serviceErr = errors.NewInvalidParamsError(fmt.Sprintf("Invalid params for list_files: %v", err), nil)
 				}
 			}
 			// If no error from param check, proceed (params is an empty ListFilesRequest)
 
 			if serviceErr == nil {
 				serviceRespData, serviceErr = h.service.ListFiles(params)
-				// Removed dummy response:
-				// serviceRespData = models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "dummy/path"}
-				// serviceErr = nil
 			}
 		default:
 			serviceErr = errors.NewMethodNotFoundError(jsonReq.Method)
@@ -179,10 +172,4 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 
 	log.Println("Stdio JSON-RPC handler finished.")
 	return nil
-}
-
-// Helper to handle empty lines or other non-JSON input robustly
-func (h *StdioHandler) processLine(lineBytes []byte, output io.Writer) {
-    // This function body is now mostly integrated into Start() for clarity.
-    // Kept as a placeholder if refactoring is needed later.
 }

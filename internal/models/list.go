@@ -3,7 +3,7 @@ package models
 // FileInfo describes a file in the directory listing.
 type FileInfo struct {
 	Name     string `json:"name"`
-	Size     int64  `json:"size"` // Using int64 for file size
+	Size     int64  `json:"size"`     // Using int64 for file size
 	Modified string `json:"modified"` // ISO 8601 date-time string
 	Readable bool   `json:"readable"`
 	Writable bool   `json:"writable"`
