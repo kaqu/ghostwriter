@@ -27,9 +27,15 @@ const (
 	// CodeOperationLockFailed indicates that an operation could not proceed because a lock on the resource could not be acquired.
 	CodeOperationLockFailed = -32002 // Example custom application error
 
-	// CodeFileTooLarge indicates the file exceeds the configured size limit.
-	CodeFileTooLarge = -32003
+	// CodeOperationLockFailed indicates that an operation could not proceed because a lock on the resource could not be acquired.
+	CodeOperationLockFailed = -32002 // Example custom application error
 )
+
+// CodeFileTooLargeType is a string identifier for file too large errors.
+const CodeFileTooLargeType = "file_too_large"
+
+// CodeInvalidEncodingType is a string identifier for invalid encoding errors.
+const CodeInvalidEncodingType = "invalid_encoding"
 
 // --- Helper functions to create models.ErrorDetail ---
 
@@ -47,52 +53,62 @@ func NewErrorDetail(code int, message string, data interface{}) *models.ErrorDet
 // NewParseError creates an ErrorDetail for JSON parsing errors.
 // JSON-RPC: -32700
 func NewParseError(details string) *models.ErrorDetail {
-	return NewErrorDetail(CodeParseError, "Parse error", map[string]string{"details": details})
+	data := map[string]interface{}{
+		"details":   details,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeParseError, "Parse error", data)
 }
 
 // NewInvalidRequestError creates an ErrorDetail for invalid JSON-RPC Request objects.
 // JSON-RPC: -32600
 func NewInvalidRequestError(details string) *models.ErrorDetail {
-	return NewErrorDetail(CodeInvalidRequest, "Invalid Request", map[string]string{"details": details})
+	data := map[string]interface{}{
+		"details":   details,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeInvalidRequest, "Invalid Request", data)
 }
 
 // NewMethodNotFoundError creates an ErrorDetail when a JSON-RPC method is not found.
 // JSON-RPC: -32601
 func NewMethodNotFoundError(methodName string) *models.ErrorDetail {
-	return NewErrorDetail(CodeMethodNotFound, "Method not found", map[string]string{"method": methodName})
+	data := map[string]interface{}{
+		"method":    methodName,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeMethodNotFound, "Method not found", data)
 }
 
 // NewInvalidParamsError creates an ErrorDetail for invalid method parameters.
 // JSON-RPC: -32602
 // paramIssues can contain specific details about which parameters were invalid.
-func NewInvalidParamsError(summaryMessage string, paramIssues map[string]interface{}) *models.ErrorDetail {
-	// The main message for the error.
+// Optional filename and operation can be provided for context.
+func NewInvalidParamsError(summaryMessage string, paramIssues map[string]interface{}, filename ...string) *models.ErrorDetail {
 	finalMessage := "Invalid params"
 	if summaryMessage != "" {
-		finalMessage = summaryMessage // Use provided summary if not empty
+		finalMessage = summaryMessage
 	}
 
-	// Construct the data payload.
-	// paramIssues itself can be the primary data, or it can be part of a larger map.
-	// For simplicity, if paramIssues is the only data, we can use it directly.
-	// Otherwise, wrap it.
-	var dataPayload interface{}
+	dataPayload := map[string]interface{}{
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
 	if paramIssues == nil {
-		// If there are no specific paramIssues, the summaryMessage is key.
-		// We can add the summaryMessage to details for consistency if needed.
-		dataPayload = map[string]interface{}{"details": finalMessage}
+		dataPayload["details"] = finalMessage
 	} else {
-		// If paramIssues are provided, make them available under a "param_issues" key for clarity,
-		// and include the overall summary message as "details".
-		dataPayload = map[string]interface{}{
-			"details":      summaryMessage, // General summary of the problem
-			"param_issues": paramIssues,    // Specific field errors
+		dataPayload["details"] = summaryMessage
+		dataPayload["param_issues"] = paramIssues
+	}
+
+	// Check for optional filename and operation (assuming operation might be the second element if filename is present)
+	// This is a simple way to handle optional args; a struct or options pattern might be better for more args.
+	if len(filename) > 0 && filename[0] != "" {
+		dataPayload["filename"] = filename[0]
+		if len(filename) > 1 && filename[1] != "" {
+			dataPayload["operation"] = filename[1] // Assuming second optional arg is operation
 		}
 	}
-	// If summaryMessage was empty and paramIssues exist, the top-level "Invalid params" is used.
-	// It might be better to always have a summary message.
-	// Let's refine: the main message is "Invalid params" or the summary.
-	// The data field contains the specifics.
 
 	return NewErrorDetail(CodeInvalidParams, finalMessage, dataPayload)
 }
@@ -100,61 +116,89 @@ func NewInvalidParamsError(summaryMessage string, paramIssues map[string]interfa
 // NewInternalError creates an ErrorDetail for unexpected server errors.
 // JSON-RPC: -32603
 func NewInternalError(details string) *models.ErrorDetail {
-	return NewErrorDetail(CodeInternalError, "Internal error", map[string]string{"details": details})
+	data := map[string]interface{}{
+		"details":   details,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeInternalError, "Internal error", data)
 }
 
 // NewFileSystemError creates a generic file system ErrorDetail.
 // App specific: -32001
 func NewFileSystemError(filename, operation, details string) *models.ErrorDetail {
-	return NewErrorDetail(CodeFileSystemError, "File system error", map[string]string{
+	data := map[string]interface{}{
 		"filename":  filename,
 		"operation": operation,
 		"details":   details,
-	})
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeFileSystemError, "File system error", data)
 }
 
 // NewFileNotFoundError creates an ErrorDetail for file not found errors.
 // App specific: -32001. HTTP status: 404.
 func NewFileNotFoundError(filename, operation string) *models.ErrorDetail {
-	return NewErrorDetail(CodeFileSystemError, fmt.Sprintf("File '%s' not found", filename), map[string]interface{}{ // Changed to map[string]interface{}
+	data := map[string]interface{}{
 		"filename":  filename,
 		"operation": operation,
 		"type":      "file_not_found",
-	})
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeFileSystemError, fmt.Sprintf("File '%s' not found", filename), data)
 }
 
 // NewPermissionDeniedError creates an ErrorDetail for permission denied errors.
 // App specific: -32001. HTTP status: 403.
 func NewPermissionDeniedError(filename, operation string) *models.ErrorDetail {
-	return NewErrorDetail(CodeFileSystemError, fmt.Sprintf("Permission denied for file '%s'", filename), map[string]interface{}{ // Changed to map[string]interface{}
+	data := map[string]interface{}{
 		"filename":  filename,
 		"operation": operation,
 		"type":      "permission_denied",
-	})
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeFileSystemError, fmt.Sprintf("Permission denied for file '%s'", filename), data)
 }
 
 // NewFileTooLargeError creates an ErrorDetail for files exceeding size limits.
-// App specific: -32003. HTTP status: 413.
-func NewFileTooLargeError(filename string, maxSizeMB int) *models.ErrorDetail {
-	return NewErrorDetail(CodeFileTooLarge,
-		fmt.Sprintf("File '%s' exceeds maximum allowed size of %d MB", filename, maxSizeMB),
-		map[string]interface{}{
-			"filename":    filename,
-			"max_size_mb": maxSizeMB,
-			"type":        "file_too_large",
-		})
+// App specific: uses CodeFileSystemError. HTTP status: 413.
+func NewFileTooLargeError(filename string, operation string, currentSize int64, maxSizeMB int) *models.ErrorDetail {
+	message := fmt.Sprintf("File '%s' (%d bytes) exceeds maximum allowed size of %d MB during %s operation", filename, currentSize, maxSizeMB, operation)
+	data := map[string]interface{}{
+		"filename":           filename,
+		"operation":          operation,
+		"current_size_bytes": currentSize,
+		"max_size_mb":        maxSizeMB,
+		"type":               CodeFileTooLargeType,
+		"timestamp":          time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeFileSystemError, message, data)
+}
+
+// NewInvalidEncodingError creates an ErrorDetail for invalid file encoding.
+// App specific: uses CodeFileSystemError. HTTP status: 400.
+func NewInvalidEncodingError(filename, operation, details string) *models.ErrorDetail {
+	data := map[string]interface{}{
+		"filename":  filename,
+		"operation": operation,
+		"details":   details,
+		"type":      CodeInvalidEncodingType,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	return NewErrorDetail(CodeFileSystemError, fmt.Sprintf("File '%s' has invalid encoding: %s", filename, details), data)
 }
 
 // NewOperationLockFailedError creates an ErrorDetail for failures to acquire a lock.
 // App specific: -32002. HTTP status: 409 (Conflict) or 503 (Service Unavailable) might be appropriate.
 func NewOperationLockFailedError(filename, operation string, details string) *models.ErrorDetail {
+	data := map[string]interface{}{
+		"filename":  filename,
+		"operation": operation,
+		"details":   details,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
 	return NewErrorDetail(CodeOperationLockFailed,
 		fmt.Sprintf("Could not acquire lock for operation '%s' on file '%s'", operation, filename),
-		map[string]interface{}{ // Changed to map[string]interface{}
-			"filename":  filename,
-			"operation": operation,
-			"details":   details,
-		})
+		data)
 }
 
 // --- Conversion to HTTP and JSON-RPC Error Structures ---
@@ -168,7 +212,8 @@ func ToErrorResponse(errDetail *models.ErrorDetail) *models.ErrorResponse {
 }
 
 // ToJSONRPCError converts an ErrorDetail to a models.JSONRPCError.
-// It attempts to map the Data field of ErrorDetail to models.JSONRPCErrorData.
+// It maps fields from ErrorDetail.Data (expected to be map[string]interface{})
+// to models.JSONRPCErrorData.
 func ToJSONRPCError(errDetail *models.ErrorDetail) *models.JSONRPCError {
 	if errDetail == nil {
 		return nil
@@ -177,46 +222,63 @@ func ToJSONRPCError(errDetail *models.ErrorDetail) *models.JSONRPCError {
 		Code:    errDetail.Code,
 		Message: errDetail.Message,
 	}
+
 	if errDetail.Data != nil {
-		// Attempt to cast Data to a map to populate JSONRPCErrorData
-		// This is a simple approach; more robust mapping might be needed if Data has diverse structures.
-		if dataMap, ok := errDetail.Data.(map[string]string); ok { // Keep this for backward compatibility if some errors still use it
-			rpcErr.Data = &models.JSONRPCErrorData{
-				Filename:  dataMap["filename"],
-				Operation: dataMap["operation"],
-				Details:   dataMap["details"],
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-			}
-		} else if dataMapIf, ok := errDetail.Data.(map[string]interface{}); ok {
-			// Handle cases where data might have mixed types (e.g. max_size_mb int)
-			var filename, operation, details string
-			// Safely extract known fields, converting if necessary
-			if val, ok := dataMapIf["filename"].(string); ok { filename = val }
-			if val, ok := dataMapIf["operation"].(string); ok { operation = val }
+		if dataMap, ok := errDetail.Data.(map[string]interface{}); ok {
+			// Initialize JSONRPCErrorData
+			rpcErr.Data = &models.JSONRPCErrorData{}
 
-			// For details, it could be a simple string or structured (like param_issues)
-			// If param_issues exists, format it. Otherwise, try to get "details" string.
-			if pi, piOk := dataMapIf["param_issues"]; piOk {
-				details = fmt.Sprintf("Parameter issues: %v. Summary: %v", pi, dataMapIf["details"])
-			} else if val, ok := dataMapIf["details"].(string); ok {
-				details = val
+			// Directly map known fields, checking for type safety
+			if ts, ok := dataMap["timestamp"].(string); ok {
+				rpcErr.Data.Timestamp = ts
+			} else {
+				// Fallback if timestamp is missing or not a string
+				rpcErr.Data.Timestamp = time.Now().UTC().Format(time.RFC3339)
 			}
 
-
-			rpcErr.Data = &models.JSONRPCErrorData{
-				Filename:  filename,
-				Operation: operation,
-				Details:   details,
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			if filename, ok := dataMap["filename"].(string); ok {
+				rpcErr.Data.Filename = filename
 			}
+			if operation, ok := dataMap["operation"].(string); ok {
+				rpcErr.Data.Operation = operation
+			}
+
+			// Handle 'details' which might be a simple string or part of structured data
+			// For instance, 'param_issues' might exist alongside a 'details' summary.
+			var detailsString string
+			if details, ok := dataMap["details"].(string); ok {
+				detailsString = details
+			}
+
+			if paramIssues, ok := dataMap["param_issues"]; ok {
+				if detailsString != "" {
+					detailsString = fmt.Sprintf("%s. Parameter issues: %v", detailsString, paramIssues)
+				} else {
+					detailsString = fmt.Sprintf("Parameter issues: %v", paramIssues)
+				}
+			}
+			rpcErr.Data.Details = detailsString
+
+			// Include any other fields from dataMap directly, if JSONRPCErrorData is extended
+			// or if we want to pass them through. For now, we map specific fields.
+			// Example for 'type' or other custom fields if they were part of JSONRPCErrorData:
+			// if typeVal, ok := dataMap["type"].(string); ok { rpcErr.Data.Type = typeVal }
+
+
 		} else {
-			// Fallback if Data is not a map[string]string or map[string]interface{}
+			// Fallback if Data is not map[string]interface{} (should ideally not happen)
+			// Create minimal JSONRPCErrorData with details and a new timestamp.
 			rpcErr.Data = &models.JSONRPCErrorData{
-				Details:   fmt.Sprintf("%v", errDetail.Data),
+				Details:   fmt.Sprintf("%v", errDetail.Data), // Convert whatever Data is to string
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
 			}
 		}
+	} else {
+		// If errDetail.Data is nil, ensure rpcErr.Data is also appropriately handled or nil.
+		// Depending on requirements, might initialize with a timestamp.
+		// For now, if Data is nil, JSONRPCErrorData will be nil too, which is fine.
 	}
+
 	return rpcErr
 }
 
@@ -247,6 +309,8 @@ func MapErrorToHTTPStatus(errorCode int, errDetail *models.ErrorDetail) int {
 						return http.StatusNotFound
 					case "permission_denied":
 						return http.StatusForbidden
+					case CodeInvalidEncodingType:
+						return http.StatusBadRequest
 					}
 				}
 			} else if dataMap, ok := errDetail.Data.(map[string]string); ok { // Fallback for older style
@@ -262,9 +326,19 @@ func MapErrorToHTTPStatus(errorCode int, errDetail *models.ErrorDetail) int {
 		}
 		// Default for unspecific CodeFileSystemError, though ideally it should always have a 'type'.
 		// Consider logging a warning if a FileSystemError doesn't have a specific type.
+		// For CodeFileSystemError, also check for file_too_large type
+		if errDetail != nil && errDetail.Data != nil {
+			if dataMapIf, ok := errDetail.Data.(map[string]interface{}); ok {
+				if errorType, exists := dataMapIf["type"].(string); exists {
+					if errorType == CodeFileTooLargeType {
+						return http.StatusRequestEntityTooLarge
+					}
+				}
+			}
+		}
 		return http.StatusInternalServerError // Or a more generic client error if appropriate
-	case CodeFileTooLarge:
-		return http.StatusRequestEntityTooLarge
+	// case CodeFileTooLarge: // This case is now handled by checking type within CodeFileSystemError
+	// 	return http.StatusRequestEntityTooLarge
 	case CodeOperationLockFailed:
 		return http.StatusConflict // Or 503 Service Unavailable
 	default:

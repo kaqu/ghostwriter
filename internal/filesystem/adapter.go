@@ -33,6 +33,39 @@ type FileSystemAdapter interface {
 	JoinLinesWithNewlines(lines []string) []byte    // Uses \n
 }
 
+// CheckDirectoryIsWritable performs a robust check if a directory is writable.
+func CheckDirectoryIsWritable(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("path does not exist: %s: %w", path, err)
+		}
+		return fmt.Errorf("could not stat path %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", path)
+	}
+
+	// #nosec G404 -- rand is okay for temp file names
+	tmpFileName := fmt.Sprintf("writable_test_%d_%d.tmp", time.Now().UnixNano(), rand.Intn(100000))
+	tmpFilePath := filepath.Join(path, tmpFileName)
+
+	file, err := os.Create(tmpFilePath)
+	if err != nil {
+		if os.IsPermission(err) {
+			return fmt.Errorf("permission denied to write in directory %s: %w", path, err)
+		}
+		return fmt.Errorf("error creating temporary file in %s: %w", path, err)
+	}
+	_ = file.Close()
+	errRemove := os.Remove(tmpFilePath)
+	if errRemove != nil {
+		// Log or handle this warning if necessary, but main check passed
+		// For example: log.Printf("Warning: failed to remove temporary test file %s: %v", tmpFilePath, errRemove)
+	}
+	return nil
+}
+
 // DefaultFileSystemAdapter is the standard implementation of FileSystemAdapter using the os package.
 type DefaultFileSystemAdapter struct {
 	// WorkingDirectory could be stored here if needed for resolving relative paths,
@@ -66,36 +99,34 @@ func (fs *DefaultFileSystemAdapter) IsValidUTF8(content []byte) bool {
 }
 
 // WriteFileBytesAtomic writes content to a file atomically.
-// It writes to a temporary file first, then renames it to the target file.
-// The perm parameter is for the new file if created, typically 0600 or 0644.
+// It writes to a temporary file first with 0600 perm, then renames it to the target file,
+// and finally sets the desired permissions on the target file.
 func (fs *DefaultFileSystemAdapter) WriteFileBytesAtomic(filePath string, content []byte, perm os.FileMode) error {
-	// Create a temporary file in the same directory.
 	dir := filepath.Dir(filePath)
-	// Generate a random suffix for the temp file to avoid collisions.
-	// Using current time and a random number.
-	// #nosec G404 -- rand is okay for temp file names
+	// #nosec G404 -- rand is okay for temp file names, not security critical here
 	tmpFileName := fmt.Sprintf("%s.tmp.%d.%d", filepath.Base(filePath), time.Now().UnixNano(), rand.Intn(100000))
 	tmpFilePath := filepath.Join(dir, tmpFileName)
 
-	// Write to the temporary file.
-	// The spec mentions 0600 for temp files, but WriteFile uses 0666 before umask.
-	// We will explicitly chmod after writing if perm is different or more restrictive.
-	// For atomic operations, the final perm is what matters.
-	if err := os.WriteFile(tmpFilePath, content, perm); err != nil {
-		return fmt.Errorf("failed to write to temporary file %s: %w", tmpFilePath, err)
+	// 1. Write to the temporary file with 0600 permissions.
+	if err := os.WriteFile(tmpFilePath, content, 0600); err != nil {
+		return fmt.Errorf("failed to write to temporary file %s with 0600 permissions: %w", tmpFilePath, err)
 	}
 
-	// Explicitly set permissions if needed, though os.WriteFile with perm should handle it.
-	// This is more of a safeguard.
-	if err := os.Chmod(tmpFilePath, perm); err != nil {
-		_ = os.Remove(tmpFilePath) // Attempt to clean up
-		return fmt.Errorf("failed to set permissions on temporary file %s: %w", tmpFilePath, err)
-	}
-
-	// Atomically replace the original file with the temporary file.
+	// 2. Atomically replace the original file with the temporary file.
 	if err := os.Rename(tmpFilePath, filePath); err != nil {
-		_ = os.Remove(tmpFilePath) // Attempt to clean up
+		// Attempt to clean up temp file on rename failure
+		if removeErr := os.Remove(tmpFilePath); removeErr != nil {
+			// Log or handle compound error: rename failed AND temp removal failed
+			// For now, primary error is rename error.
+			// Example: log.Printf("Warning: failed to remove temp file %s after rename error: %v", tmpFilePath, removeErr)
+		}
 		return fmt.Errorf("failed to rename temporary file %s to %s: %w", tmpFilePath, filePath, err)
+	}
+
+	// 3. Set the final permissions on the destination file.
+	if err := os.Chmod(filePath, perm); err != nil {
+		// The file is in place, but permissions might not be as expected.
+		return fmt.Errorf("file written to %s, but failed to set final permissions to %o: %w", filePath, perm, err)
 	}
 
 	return nil
@@ -135,42 +166,22 @@ func (fs *DefaultFileSystemAdapter) GetFileStats(filePath string) (*FileStats, e
 	}, nil
 }
 
-// IsWritable checks if the given path (typically a directory) is writable.
-// It does this by trying to create and then delete a temporary file in that directory.
+// IsWritable checks if the given path (typically a directory) is writable
+// by calling CheckDirectoryIsWritable.
 func (fs *DefaultFileSystemAdapter) IsWritable(path string) (bool, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, fmt.Errorf("path does not exist: %s: %w", path, err)
-		}
-		return false, fmt.Errorf("could not stat path %s: %w", path, err)
+	err := CheckDirectoryIsWritable(path)
+	if err == nil {
+		return true, nil
 	}
-	if !info.IsDir() {
-		return false, fmt.Errorf("path is not a directory: %s", path)
-	}
-
-	// Attempt to create a temporary file in the directory
-	// #nosec G404 -- rand is okay for temp file names
-	tmpFileName := fmt.Sprintf("writable_test_%d_%d.tmp", time.Now().UnixNano(), rand.Intn(100000))
-	tmpFilePath := filepath.Join(path, tmpFileName)
-
-	file, err := os.Create(tmpFilePath)
-	if err != nil {
-		if os.IsPermission(err) {
-			return false, nil // Not writable due to permissions
-		}
-		return false, fmt.Errorf("error creating temporary file in %s: %w", path, err)
-	}
-
-	// Clean up: close and remove the temporary file
-	_ = file.Close()
-	errRemove := os.Remove(tmpFilePath)
-	if errRemove != nil {
-		// Log this, as it's not ideal but the writability check passed.
-		// fmt.Fprintf(os.Stderr, "Warning: failed to remove temporary test file %s: %v\n", tmpFilePath, errRemove)
-	}
-
-	return true, nil // Successfully created and can infer writability
+	// To match the original behavior of returning (false, nil) for permission errors specifically,
+	// we might need to inspect the error. However, the new CheckDirectoryIsWritable
+	// already returns a detailed error. For Validate(), any error means not writable.
+	// Let's keep it simple: if CheckDirectoryIsWritable errors, IsWritable returns false and that error.
+	// The problem description for config.Validate() implies it expects an error for "not writable".
+	// The original IsWritable returned (false, nil) on os.IsPermission(err).
+	// This is a slight behavior change. Let's stick to the new instruction:
+	// "If it returns nil, IsWritable returns (true, nil). If it returns an error, IsWritable returns (false, err)."
+	return false, err
 }
 
 // NormalizeNewlines converts all newline variations (\r\n and \r) to a single \n.
