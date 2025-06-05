@@ -70,9 +70,11 @@ func CheckDirectoryIsWritable(path string) error {
 		return fmt.Errorf("error creating temporary file in %s: %w", path, err)
 	}
 	_ = file.Close()
-	// If removing the temporary file fails, we don't treat it as a critical error
-	// for the writability check itself, but it might indicate other issues.
-	_ = os.Remove(tmpFilePath)
+	errRemove := os.Remove(tmpFilePath)
+	if errRemove != nil {
+		// Log or handle this warning if necessary, but main check passed
+		// For example: log.Printf("Warning: failed to remove temporary test file %s: %v", tmpFilePath, errRemove)
+	}
 	return nil
 }
 
@@ -126,7 +128,12 @@ func (fs *DefaultFileSystemAdapter) WriteFileBytesAtomic(filePath string, conten
 
 	// Although os.CreateTemp typically uses 0600, an explicit Chmod can be used
 	// for guarantee if desired, but it's often redundant on POSIX systems.
-	// We trust os.CreateTemp's default 0600 permission for the temp file.
+	// For this exercise, we'll trust os.CreateTemp's default 0600 permission for the temp file.
+	// If an explicit chmod was required here, it would be:
+	// if errChmod := os.Chmod(tempFile.Name(), 0600); errChmod != nil {
+	// 	 tempFile.Close() // Close before returning due to chmod error
+	// 	 return fmt.Errorf("failed to chmod temporary file %s to 0600: %w", tempFile.Name(), errChmod)
+	// }
 
 	// 2. Write content to the temporary file.
 	if _, errWrite := tempFile.Write(content); errWrite != nil {
@@ -301,7 +308,10 @@ func (fs *DefaultFileSystemAdapter) ListDir(path string) ([]DirEntryInfo, error)
 		if err != nil {
 			// This can happen if the file is removed/changed between ReadDir and Info()
 			// or due to permission issues on the specific file.
-			// To be safer, we return the error, as partial listings can be misleading.
+			// Log this and continue, or return an error. For now, log and skip.
+			// log.Printf("Warning: could not get info for entry %s in %s: %v", entry.Name(), path, err)
+			// Alternatively, to be safer, we could return the error.
+			// Let's return an error to be safe, as partial listings can be misleading.
 			return nil, fmt.Errorf("failed to get info for entry %s in %s: %w", entry.Name(), path, err)
 		}
 

@@ -437,9 +437,12 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 		return sortedEdits[i].Line > sortedEdits[j].Line
 	})
 
+	// linesModifiedCount := 0 // This specific counter was causing "declared and not used"
+
 	for _, edit := range sortedEdits {
 		lineIndex := edit.Line - 1
 		currentLineCount := len(lines)
+		// opChangedLineCount := false // This was also unused
 
 		switch edit.Operation {
 		case "replace":
@@ -450,6 +453,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 			}
 			if lines[lineIndex] != edit.Content {
 				lines[lineIndex] = edit.Content
+				// linesModifiedCount++ // Removed this to use overall diff later
 			}
 		case "insert":
 			if lineIndex < 0 || lineIndex > currentLineCount {
@@ -458,6 +462,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			lines = append(lines[:lineIndex], append([]string{edit.Content}, lines[lineIndex:]...)...)
+			// opChangedLineCount = true
 		case "delete":
 			if currentLineCount == 0 {
 				return nil, errors.NewInvalidParamsError(
@@ -470,8 +475,12 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			lines = append(lines[:lineIndex], lines[lineIndex+1:]...)
+			// opChangedLineCount = true
 		}
+		// if opChangedLineCount {} // temp use
 	}
+
+	// linesAfterEditsCount := len(lines) // This was unused
 
 	if req.Append != "" {
 		appendLines := s.fsAdapter.SplitLines([]byte(req.Append))
@@ -576,8 +585,11 @@ func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) (*m
 			filePath := filepath.Join(s.workingDir, entry.Name)
 			content, readErr := s.fsAdapter.ReadFileBytes(filePath)
 			if readErr != nil {
-				// If reading the file for line count fails, Lines remains -1.
-				// This error is not returned to the client for ListFiles, but could be logged server-side if desired.
+				// Log this error, but don't fail the whole ListFiles operation.
+				// Lines will remain -1.
+				// Example logging: log.Printf("ListFiles: Error reading file %s for line count: %v", entry.Name, readErr)
+				// Based on error types, could set specific line counts (e.g. permission denied vs actual read error)
+				// For now, any error in reading means -1.
 				fileInfo.Lines = -1
 			} else {
 				if !s.fsAdapter.IsValidUTF8(content) {

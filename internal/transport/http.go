@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings" // Added for Content-Type check
 	"time"
+	// "strconv" // Not used yet, can remove if not needed later
 )
 
 const (
@@ -272,6 +273,9 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serviceResp, serviceErr := h.service.ListFiles(req)
+	// Removed dummy response:
+	// serviceResp := models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "dummy/path"}
+	// var serviceErr *models.ErrorDetail = nil
 
 	if serviceErr != nil {
 		httpStatus := errors.MapErrorToHTTPStatus(serviceErr.Code, serviceErr)

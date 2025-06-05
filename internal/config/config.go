@@ -10,10 +10,11 @@ import (
 
 // Config holds all configurable values for the server.
 type Config struct {
-	WorkingDirectory    string
-	Transport           string
-	Port                int
-	MaxFileSizeMB       int
+	WorkingDirectory string
+	Transport        string
+	Port             int
+	MaxFileSizeMB    int
+	// MaxConcurrentOps    int // Removed as per specification
 	OperationTimeoutSec int
 }
 
@@ -24,7 +25,8 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.WorkingDirectory, "dir", "", "Path to the working directory (required)")
 	flag.StringVar(&cfg.Transport, "transport", "http", "Transport protocol (http or stdio)")
 	flag.IntVar(&cfg.Port, "port", 8080, "Port for HTTP transport")
-	flag.IntVar(&cfg.MaxFileSizeMB, "max-size", 10, "Maximum file size in MB")           // Renamed from -max-file-size
+	flag.IntVar(&cfg.MaxFileSizeMB, "max-size", 10, "Maximum file size in MB") // Renamed from -max-file-size
+	// flag.IntVar(&cfg.MaxConcurrentOps, "max-concurrent", 10, "Maximum concurrent operations") // Removed as per specification
 	flag.IntVar(&cfg.OperationTimeoutSec, "timeout", 10, "Operation timeout in seconds") // Default changed to 10
 
 	flag.Parse()
@@ -66,15 +68,15 @@ func (c *Config) Validate() error {
 		if err != nil {
 			return fmt.Errorf("HTTP port %d is not available: %w", c.Port, err)
 		}
-		if err := listener.Close(); err != nil {
-			// Log this minor error if necessary, but port was available
-			// For example: fmt.Fprintf(os.Stderr, "Warning: could not close test listener for port %d: %v\n", c.Port, err)
-		}
+		// Attempt to close the listener and ignore the error, as the port was available.
+		_ = listener.Close()
 	}
 
 	if c.MaxFileSizeMB < 1 || c.MaxFileSizeMB > 100 {
 		return fmt.Errorf("max file size must be between 1 and 100 MB")
 	}
+
+	// Validation for MaxConcurrentOps removed as per specification
 
 	if c.OperationTimeoutSec < 1 || c.OperationTimeoutSec > 300 { // Adjusted validation range
 		return fmt.Errorf("operation timeout must be between 1 and 300 seconds")

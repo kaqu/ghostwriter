@@ -37,6 +37,11 @@ func main() {
 	}
 	log.Println("Core services initialized successfully.")
 
+	// --- Shutdown context ---
+	// Create a context that can be cancelled for graceful shutdown
+	// mainCtx, cancel := context.WithCancel(context.Background())
+	// defer cancel() // Ensure all paths cancel the context
+
 	// 7. Setup and wait for shutdown signal
 	// This will be slightly different for HTTP vs stdio regarding server instance
 	var httpServer *http.Server // Declare httpServer here to access it in shutdown
@@ -144,13 +149,14 @@ func main() {
 		// Add a small buffer to the overall shutdown timeout for cleanup tasks
 		// totalShutdownDeadline := time.Now().Add(shutdownTimeout + 2*time.Second)
 
+		// shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second // This is the redundant declaration
+
 		if cfg.Transport == "http" && httpServer != nil {
 			log.Println("Attempting to gracefully shut down HTTP server...")
-			// Use a timeout for the shutdown process
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-			defer shutdownCancel() // Ensure context is cancelled to free resources
+			ctx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancelShutdown() // Ensure context is cancelled to free resources
 
-			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			if err := httpServer.Shutdown(ctx); err != nil {
 				log.Printf("HTTP server graceful shutdown error: %v\n", err)
 			} else {
 				log.Println("HTTP server gracefully stopped.")
@@ -166,6 +172,14 @@ func main() {
 			// For now, rely on external closure of stdin or process termination.
 			// In a real daemon, you might send a specific "shutdown" JSON-RPC message if the protocol supports it.
 		}
+
+		// Wait for the server goroutine to finish, or timeout
+		// select {
+		// case <-serverDoneChan:
+		//	log.Println("Server goroutine finished.")
+		// case <-time.After(shutdownTimeout):
+		//	log.Println("Timeout waiting for server goroutine to finish.")
+		// }
 
 	case err := <-serverDoneChan:
 		if err != nil {

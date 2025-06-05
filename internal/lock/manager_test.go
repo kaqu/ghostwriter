@@ -309,10 +309,9 @@ func TestLockManager_AcquireReleaseStress(t *testing.T) {
 			for j := 0; j < iterations; j++ {
 				filename := files[(goroutineID+j)%len(files)] // Cycle through files
 
-				lockAttemptTimeout := 100 * time.Millisecond // Shorter timeout for individual attempt
 				// For stress test, make timeout slightly random to vary contention
 				// #nosec G404 -- fine for test
-				lockAttemptTimeout = time.Duration(rand.Intn(50)+80) * time.Millisecond
+				lockAttemptTimeout := time.Duration(rand.Intn(50)+80) * time.Millisecond
 
 				err := lm.AcquireLock(filename, lockAttemptTimeout)
 				if err == nil {
@@ -386,7 +385,10 @@ func TestLockManager_GlobalCapacityTimeoutThenAcquire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Main: AcquireLock for %s failed: %v. Duration: %v", file2, err, duration)
 	} else {
-		lm.ReleaseLock(file2)
+		releaseErr := lm.ReleaseLock(file2)
+		if releaseErr != nil {
+			t.Errorf("Main: ReleaseLock for %s failed: %v", file2, releaseErr)
+		}
 	}
 
 	// We expect this to have waited for g1 to release file1.

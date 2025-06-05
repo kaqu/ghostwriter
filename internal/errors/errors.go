@@ -221,19 +221,18 @@ func ToJSONRPCError(errDetail *models.ErrorDetail) *models.JSONRPCError {
 	}
 
 	if errDetail.Data != nil {
-		// Initialize rpcErr.Data with a default timestamp.
-		// This ensures Timestamp is always set.
-		rpcErr.Data = &models.JSONRPCErrorData{
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-		}
-
 		if dataMap, ok := errDetail.Data.(map[string]interface{}); ok {
-			// If a valid timestamp is present in dataMap, overwrite the default.
+			// Initialize JSONRPCErrorData
+			rpcErr.Data = &models.JSONRPCErrorData{}
+
+			// Directly map known fields, checking for type safety
 			if ts, ok := dataMap["timestamp"].(string); ok {
 				rpcErr.Data.Timestamp = ts
+			} else {
+				// Fallback if timestamp is missing or not a string
+				rpcErr.Data.Timestamp = time.Now().UTC().Format(time.RFC3339)
 			}
 
-			// Map other known fields
 			if filename, ok := dataMap["filename"].(string); ok {
 				rpcErr.Data.Filename = filename
 			}
@@ -261,13 +260,20 @@ func ToJSONRPCError(errDetail *models.ErrorDetail) *models.JSONRPCError {
 			// or if we want to pass them through. For now, we map specific fields.
 			// Example for 'type' or other custom fields if they were part of JSONRPCErrorData:
 			// if typeVal, ok := dataMap["type"].(string); ok { rpcErr.Data.Type = typeVal }
+
 		} else {
-			// If Data is not map[string]interface{}, use its string representation as Details.
-			// Timestamp is already set from the initial rpcErr.Data creation.
-			rpcErr.Data.Details = fmt.Sprintf("%v", errDetail.Data)
+			// Fallback if Data is not map[string]interface{} (should ideally not happen)
+			// Create minimal JSONRPCErrorData with details and a new timestamp.
+			rpcErr.Data = &models.JSONRPCErrorData{
+				Details:   fmt.Sprintf("%v", errDetail.Data), // Convert whatever Data is to string
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+			}
 		}
+	} else {
+		// If errDetail.Data is nil, ensure rpcErr.Data is also appropriately handled or nil.
+		// Depending on requirements, might initialize with a timestamp.
+		// For now, if Data is nil, JSONRPCErrorData will be nil too, which is fine.
 	}
-	// If errDetail.Data was nil, rpcErr.Data will also be nil, which is acceptable.
 
 	return rpcErr
 }
@@ -327,6 +333,8 @@ func MapErrorToHTTPStatus(errorCode int, errDetail *models.ErrorDetail) int {
 			}
 		}
 		return http.StatusInternalServerError // Or a more generic client error if appropriate
+	// case CodeFileTooLarge: // This case is now handled by checking type within CodeFileSystemError
+	// 	return http.StatusRequestEntityTooLarge
 	case CodeOperationLockFailed:
 		return http.StatusConflict // Or 503 Service Unavailable
 	default:
