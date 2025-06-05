@@ -374,7 +374,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 	var lines []string
 	var fileCreated bool
 	var originalLineCount int
-	newlineStyle := "\n"
+	var newlineStyle string
 
 	fileExists, fsErr := s.fsAdapter.FileExists(filePath)
 	if fsErr != nil {
