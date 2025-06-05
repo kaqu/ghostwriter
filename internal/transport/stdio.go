@@ -117,6 +117,30 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 			} else {
 				serviceRespData, serviceErr = h.service.EditFile(params)
 			}
+		case "list_files":
+			var params models.ListFilesRequest
+			// Params field for list_files should be empty or an empty object.
+			// Unmarshal will succeed if jsonReq.Params is null or an empty JSON object "{}".
+			if len(jsonReq.Params) > 0 && string(jsonReq.Params) != "null" && string(jsonReq.Params) != "{}" {
+				// Check if it's a non-empty object or array
+				var temp interface{}
+				if err := json.Unmarshal(jsonReq.Params, &temp); err == nil {
+					// if it's some other valid JSON that is not an empty object, it's an error
+					if _, isMap := temp.(map[string]interface{}); !isMap || len(temp.(map[string]interface{})) > 0 {
+						 serviceErr = errors.NewInvalidParamsError("Parameters for list_files must be an empty JSON object or null.", nil)
+					}
+				} else { // Not valid JSON at all
+					 serviceErr = errors.NewInvalidParamsError(fmt.Sprintf("Invalid params for list_files: %v", err), nil)
+				}
+			}
+			// If no error from param check, proceed (params is an empty ListFilesRequest)
+
+			if serviceErr == nil {
+				serviceRespData, serviceErr = h.service.ListFiles(params)
+				// Removed dummy response:
+				// serviceRespData = models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "dummy/path"}
+				// serviceErr = nil
+			}
 		default:
 			serviceErr = errors.NewMethodNotFoundError(jsonReq.Method)
 		}

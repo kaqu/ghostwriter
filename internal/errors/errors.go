@@ -26,9 +26,6 @@ const (
 
 	// CodeOperationLockFailed indicates that an operation could not proceed because a lock on the resource could not be acquired.
 	CodeOperationLockFailed = -32002 // Example custom application error
-
-	// CodeOperationLockFailed indicates that an operation could not proceed because a lock on the resource could not be acquired.
-	CodeOperationLockFailed = -32002 // Example custom application error
 )
 
 // CodeFileTooLargeType is a string identifier for file too large errors.

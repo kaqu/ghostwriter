@@ -7,6 +7,7 @@ import (
 	"file-editor-server/internal/models"
 	"file-editor-server/internal/service"
 	"fmt"
+	"io" // Added for io.EOF and r.Body.Close
 	"log"
 	"net/http"
 	"strings" // Added for Content-Type check
@@ -53,6 +54,7 @@ func (h *HTTPHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/read_file", h.handleReadFile)
 	mux.HandleFunc("/edit_file", h.handleEditFile)
 	mux.HandleFunc("/health", h.handleHealthCheck)
+	mux.HandleFunc("/list_files", h.handleListFiles) // Added /list_files route
 }
 
 // writeJSONResponse is a helper to write JSON data to the response.
@@ -226,4 +228,60 @@ func (h *HTTPHandler) StartServer(port int, readTimeoutSec int, writeTimeoutSec 
 	}
 	log.Printf("HTTP server on port %d shut down.", port)
 	return nil // Or return http.ErrServerClosed if caller needs to know
+}
+
+func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		errDetail := errors.NewInvalidRequestError(fmt.Sprintf("Method %s not allowed for /list_files. Use POST.", r.Method))
+		writeJSONErrorResponse(w, http.StatusMethodNotAllowed, errDetail)
+		return
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/json") && contentType != "" { // Allow empty body with no content type, or require application/json
+		// The spec says "Content-Type: application/json (REQUIRED for all requests and responses)"
+		// An empty request body for list_files might not strictly need it, but spec is strict.
+		// Let's enforce it.
+		errDetail := errors.NewInvalidRequestError("Invalid Content-Type header. Must be 'application/json' or 'application/json; charset=utf-8'.")
+		writeJSONErrorResponse(w, http.StatusUnsupportedMediaType, errDetail)
+		return
+	}
+
+	// Request body for list_files is an empty JSON object {} as per spec 3.1.1
+	// We can try to decode it into an empty struct to validate it's indeed an empty object.
+	var req models.ListFilesRequest
+	// Only decode if there's a body. Some clients might send Content-Length: 0 for empty POST.
+	if r.ContentLength > 0 {
+		// MaxBytesReader to prevent large empty bodies if someone sends one.
+		r.Body = http.MaxBytesReader(w, r.Body, 1024) // Limit empty body to 1KB
+		defer r.Body.Close()
+
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil && err != io.EOF { // EOF is fine for empty or {} body
+			// Handle cases where body is not an empty JSON object e.g. `[]` or `"string"`
+			if _, ok := err.(*json.SyntaxError); ok || strings.Contains(err.Error(), "cannot unmarshal") {
+                 errDetail := errors.NewParseError(fmt.Sprintf("Request body must be an empty JSON object {} or empty: %v", err))
+                 writeJSONErrorResponse(w, http.StatusBadRequest, errDetail)
+                 return
+            }
+			// For other decode errors
+			errDetail := errors.NewParseError(fmt.Sprintf("Failed to decode request body for list_files: %v", err))
+			writeJSONErrorResponse(w, http.StatusBadRequest, errDetail)
+			return
+		}
+	}
+
+	serviceResp, serviceErr := h.service.ListFiles(req)
+	// Removed dummy response:
+	// serviceResp := models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "dummy/path"}
+	// var serviceErr *models.ErrorDetail = nil
+
+	if serviceErr != nil {
+		httpStatus := errors.MapErrorToHTTPStatus(serviceErr.Code, serviceErr)
+		writeJSONErrorResponse(w, httpStatus, serviceErr)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, serviceResp)
 }
