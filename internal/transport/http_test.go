@@ -16,8 +16,9 @@ import (
 
 // --- Mock FileOperationService ---
 type mockFileOperationService struct {
-	ReadFileFunc func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
-	EditFileFunc func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
+	ReadFileFunc  func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
+	EditFileFunc  func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
+	ListFilesFunc func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) // Added
 }
 
 func (m *mockFileOperationService) ReadFile(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
@@ -32,6 +33,15 @@ func (m *mockFileOperationService) EditFile(req models.EditFileRequest) (*models
 		return m.EditFileFunc(req)
 	}
 	return nil, errors.NewInternalError("EditFileFunc not implemented in mock")
+}
+
+// ListFiles implements the FileOperationService interface for the mock.
+func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) {
+	if m.ListFilesFunc != nil {
+		return m.ListFilesFunc(req)
+	}
+	// Provide a default mock response that's valid but minimal.
+	return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/mock/dir"}, nil
 }
 
 func TestHTTPHandler_handleReadFile_Success(t *testing.T) {
@@ -260,10 +270,14 @@ func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 	mockService := &mockFileOperationService{
 		ReadFileFunc: func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
 			// Minimal implementation for route testing: return a known error or simple success
-			return nil, errors.NewInvalidParamsError("test", nil) // Or return a simple success
+			return nil, errors.NewInvalidParamsError("test read", nil) // Or return a simple success
 		},
 		EditFileFunc: func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail) {
-			return nil, errors.NewInvalidParamsError("test", nil)
+			return nil, errors.NewInvalidParamsError("test edit", nil)
+		},
+		ListFilesFunc: func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) {
+			// Minimal implementation for ListFiles as well for completeness
+			return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/testdir"}, nil
 		},
 	}
 	handler := NewHTTPHandler(mockService, 0)
@@ -273,6 +287,7 @@ func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 	// Test /read_file
 	// Provide an empty JSON body to avoid nil body issues with json.Decoder
 	reqReadFile, _ := http.NewRequest("POST", "/read_file", bytes.NewBufferString("{}"))
+	reqReadFile.Header.Set("Content-Type", "application/json") // Added Content-Type
 	rrReadFile := httptest.NewRecorder()
 	mux.ServeHTTP(rrReadFile, reqReadFile)
 	// We expect a BadRequest (400) because the empty JSON "{}" is likely not a valid ReadFileRequest
@@ -283,6 +298,7 @@ func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 
 	// Test /edit_file
 	reqEditFile, _ := http.NewRequest("POST", "/edit_file", bytes.NewBufferString("{}"))
+	reqEditFile.Header.Set("Content-Type", "application/json") // Added Content-Type
 	rrEditFile := httptest.NewRecorder()
 	mux.ServeHTTP(rrEditFile, reqEditFile)
 	if rrEditFile.Code != http.StatusBadRequest {

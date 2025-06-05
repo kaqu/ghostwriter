@@ -21,23 +21,79 @@ type mockFileSystemAdapter struct {
 	existsShouldFail   bool
 	readShouldFail     bool
 	writeShouldFail    bool
-	statsShouldFail    bool
-	isWritableResult   bool
-	isWritableShouldFail bool
-	isValidUTF8Result  bool
+	statsShouldFail       bool
+	isWritableResult      bool
+	isWritableShouldFail  bool
+	isValidUTF8Result     bool
+	listDirShouldFail     bool                                    // New
+	listDirEntries        map[string][]filesystem.DirEntryInfo  // MODIFIED
+	readFileErrorForPath  map[string]error      // New
+	isInvalidUTF8Content  map[string]bool     // New
+	// evalSymlinksPath      string             // REMOVED global evalSymlinksPath
+	// evalSymlinksError     error              // REMOVED global evalSymlinksError
+	evalSymlinksPaths        map[string]string // New: fromPath -> toPath
+	evalSymlinksErrorForPath map[string]error  // New: fromPath -> error
 	// Add more controls as needed
 }
 
+// mockDirEntryInfo is a helper struct to create filesystem.DirEntryInfo instances for tests.
+// It is NOT an implementation of any interface, just a data holder.
+type mockDirEntryInfo struct {
+	name     string
+	isDir    bool
+	isHidden bool
+	mode     os.FileMode
+	modTime  time.Time
+	size     int64
+}
+
+// toDirEntryInfo converts mockDirEntryInfo to filesystem.DirEntryInfo
+func (mde mockDirEntryInfo) toDirEntryInfo() filesystem.DirEntryInfo {
+	return filesystem.DirEntryInfo{
+		Name:     mde.name,
+		IsDir:    mde.isDir,
+		IsHidden: mde.isHidden,
+		Mode:     mde.mode,
+		ModTime:  mde.modTime,
+		Size:     mde.size,
+	}
+}
+
+// mockFileInfo implements os.FileInfo (remains useful for other parts of the mock if needed)
+type mockFileInfo struct {
+	name    string
+	size    int64
+	modTime time.Time
+	isDir   bool
+	mode    os.FileMode
+}
+
+func (fi *mockFileInfo) Name() string       { return fi.name }
+func (fi *mockFileInfo) Size() int64        { return fi.size }
+func (fi *mockFileInfo) Mode() os.FileMode  { return fi.mode }
+func (fi *mockFileInfo) ModTime() time.Time { return fi.modTime }
+func (fi *mockFileInfo) IsDir() bool        { return fi.isDir }
+func (fi *mockFileInfo) Sys() interface{}   { return nil }
+
+
 func newMockFsAdapter() *mockFileSystemAdapter {
 	return &mockFileSystemAdapter{
-		files:             make(map[string][]byte),
-		stats:             make(map[string]*filesystem.FileStats),
-		isValidUTF8Result: true, // Default to valid UTF-8
-		isWritableResult:  true,
+		files:                    make(map[string][]byte),
+		stats:                    make(map[string]*filesystem.FileStats),
+		listDirEntries:           make(map[string][]filesystem.DirEntryInfo), // MODIFIED
+		readFileErrorForPath:     make(map[string]error),                   // New
+		isInvalidUTF8Content:     make(map[string]bool),                    // New
+		isValidUTF8Result:        true,                                   // Default to valid UTF-8
+		isWritableResult:         true,
+		evalSymlinksPaths:        make(map[string]string), // New
+		evalSymlinksErrorForPath: make(map[string]error),  // New
 	}
 }
 
 func (m *mockFileSystemAdapter) ReadFileBytes(filePath string) ([]byte, error) {
+	if err, specificError := m.readFileErrorForPath[filePath]; specificError { // New
+		return nil, err
+	}
 	if m.readShouldFail {
 		return nil, fmt.Errorf("mock read error")
 	}
@@ -90,7 +146,12 @@ func (m *mockFileSystemAdapter) IsWritable(path string) (bool, error) {
 	if m.isWritableShouldFail {return false, fmt.Errorf("mock isWritable error")}
 	return m.isWritableResult, nil
 }
-func (m *mockFileSystemAdapter) IsValidUTF8(content []byte) bool { return m.isValidUTF8Result }
+func (m *mockFileSystemAdapter) IsValidUTF8(content []byte) bool {
+	if invalid, exists := m.isInvalidUTF8Content[string(content)]; exists && invalid { // New
+		return false
+	}
+	return m.isValidUTF8Result
+}
 func (m *mockFileSystemAdapter) NormalizeNewlines(content []byte) []byte {
 	s := strings.ReplaceAll(string(content), "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
@@ -111,6 +172,27 @@ func (m *mockFileSystemAdapter) SplitLines(content []byte) []string {
 }
 func (m *mockFileSystemAdapter) JoinLinesWithNewlines(lines []string) []byte {
 	return []byte(strings.Join(lines, "\n"))
+}
+
+func (m *mockFileSystemAdapter) ListDir(dirPath string) ([]filesystem.DirEntryInfo, error) { // MODIFIED Signature
+	if m.listDirShouldFail {
+		return nil, fmt.Errorf("mock ListDir error")
+	}
+	entries, ok := m.listDirEntries[dirPath]
+	if !ok {
+		return []filesystem.DirEntryInfo{}, nil
+	}
+	return entries, nil
+}
+
+func (m *mockFileSystemAdapter) EvalSymlinks(path string) (string, error) { // MODIFIED to use maps
+	if err, ok := m.evalSymlinksErrorForPath[path]; ok {
+		return "", err
+	}
+	if resolvedPath, ok := m.evalSymlinksPaths[path]; ok {
+		return resolvedPath, nil
+	}
+	return path, nil // Default behavior: no symlink, path resolves to itself
 }
 
 // --- Mock LockManager ---
@@ -164,7 +246,7 @@ func setup(t *testing.T) (*DefaultFileOperationService, *mockFileSystemAdapter, 
 		Transport:           "http",
 		Port:                8080,
 		MaxFileSizeMB:       1, // 1 MB for tests
-		MaxConcurrentOps:    10,
+		// MaxConcurrentOps removed
 		OperationTimeoutSec: 5,
 	}
 
@@ -284,8 +366,16 @@ func TestReadFile_Error_FileTooLarge(t *testing.T) {
 	req := models.ReadFileRequest{Name: filename}
 	_, err := service.ReadFile(req)
 	if err == nil { t.Fatal("Expected error, got nil") }
-	if err.Code != errors.CodeFileTooLarge {
-		t.Errorf("Expected CodeFileTooLarge (%d), got %d (%s)", errors.CodeFileTooLarge, err.Code, err.Message)
+	if err.Code != errors.CodeFileSystemError { // MODIFIED: Check for generic file system error
+		t.Errorf("Expected CodeFileSystemError (%d), got %d (%s)", errors.CodeFileSystemError, err.Code, err.Message)
+	}
+	// Optionally, check for the specific type in Data
+	if dataMap, ok := err.Data.(map[string]interface{}); ok {
+		if dataType, ok := dataMap["type"].(string); !ok || dataType != errors.CodeFileTooLargeType {
+			t.Errorf("Expected error data type '%s', got '%s'", errors.CodeFileTooLargeType, dataType)
+		}
+	} else {
+		t.Errorf("Expected error data to be a map[string]interface{} for type check")
 	}
 }
 
@@ -294,18 +384,29 @@ func TestReadFile_Error_InvalidUTF8(t *testing.T) {
 	defer cleanup(t)
 	filename := "invalidutf8.txt"
 	fullPath := filepath.Join(tempWorkingDir, filename)
-	mockFs.files[fullPath] = []byte{0xff, 0xfe, 0xfd} // Invalid UTF-8 sequence
-	mockFs.stats[fullPath] = &filesystem.FileStats{Size: 3, IsDir: false}
-	mockFs.isValidUTF8Result = false // Tell mock fsAdapter this is invalid
+	invalidContent := []byte{0xff, 0xfe, 0xfd} // Invalid UTF-8 sequence
+	mockFs.files[fullPath] = invalidContent
+	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(len(invalidContent)), IsDir: false}
+	mockFs.isInvalidUTF8Content[string(invalidContent)] = true // MODIFIED: Use map
 
 	req := models.ReadFileRequest{Name: filename}
 	_, err := service.ReadFile(req)
 	if err == nil { t.Fatal("Expected error, got nil") }
-	if err.Code != errors.CodeInvalidParams {
-		t.Errorf("Expected CodeInvalidParams (%d), got %d (%s)", errors.CodeInvalidParams, err.Code, err.Message)
+	if err.Code != errors.CodeFileSystemError { // MODIFIED: Expected CodeFileSystemError
+		t.Errorf("Expected CodeFileSystemError (%d), got %d (%s)", errors.CodeFileSystemError, err.Code, err.Message)
 	}
-	if !strings.Contains(err.Message, "invalid UTF-8") {
-		t.Errorf("Expected error message to contain 'invalid UTF-8', got '%s'", err.Message)
+
+	// More robust check of error Data
+	if dataMap, ok := err.Data.(map[string]interface{}); ok {
+		if dataType, ok := dataMap["type"].(string); !ok || dataType != errors.CodeInvalidEncodingType {
+			t.Errorf("Expected error data type '%s', got '%v'", errors.CodeInvalidEncodingType, dataMap["type"])
+		}
+		expectedDetails := "File content is not valid UTF-8"
+		if dataDetails, ok := dataMap["details"].(string); !ok || dataDetails != expectedDetails {
+			t.Errorf("Expected error data details '%s', got '%v'", expectedDetails, dataMap["details"])
+		}
+	} else {
+		t.Errorf("Expected error Data to be a map[string]interface{}")
 	}
 }
 
@@ -500,8 +601,16 @@ func TestEditFile_Error_ContentTooLargeAfterEdit(t *testing.T) {
 	}
 	_, err := service.EditFile(req)
 	if err == nil { t.Fatal("Expected error, got nil") }
-	if err.Code != errors.CodeFileTooLarge {
-		t.Errorf("Expected CodeFileTooLarge, got %d (%s)", err.Code, err.Message)
+	if err.Code != errors.CodeFileSystemError { // MODIFIED: Check for generic file system error
+		t.Errorf("Expected CodeFileSystemError, got %d (%s)", errors.CodeFileSystemError, err.Message)
+	}
+	// Optionally, check for the specific type in Data
+	if dataMap, ok := err.Data.(map[string]interface{}); ok {
+		if dataType, ok := dataMap["type"].(string); !ok || dataType != errors.CodeFileTooLargeType {
+			t.Errorf("Expected error data type '%s', got '%s'", errors.CodeFileTooLargeType, dataType)
+		}
+	} else {
+		t.Errorf("Expected error data to be a map[string]interface{} for type check")
 	}
 }
 
@@ -630,10 +739,556 @@ func TestReadFile_SingleNewlineFile(t *testing.T) {
     }
 }
 
+// --- ListFiles Tests ---
+
+func TestListFiles_EmptyDirectory(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	// Configure ListDir to return an empty list for the root working directory
+	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{} // MODIFIED
+
+	req := models.ListFilesRequest{} // MODIFIED: Path field removed
+	resp, err := service.ListFiles(req)
+
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err.Message)
+	}
+
+	if resp.TotalCount != 0 {
+		t.Errorf("Expected TotalCount 0, got %d", resp.TotalCount)
+	}
+	if len(resp.Files) != 0 {
+		t.Errorf("Expected Files to be empty, got %d items", len(resp.Files))
+	}
+}
+
+func TestListFiles_WithFilesHiddenAndDirs(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	now := time.Now()
+	anotherTxtContent := "some content"
+	file1TxtContent := "more content\nnext line"
+
+	// Use mockDirEntryInfo and toDirEntryInfo to populate listDirEntries
+	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{
+		mockDirEntryInfo{name: "another.txt", size: int64(len(anotherTxtContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
+		mockDirEntryInfo{name: "file1.txt", size: int64(len(file1TxtContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
+		mockDirEntryInfo{name: ".hiddenfile", size: 10, modTime: now, isDir: false, mode: 0o644, isHidden: true}.toDirEntryInfo(),
+		mockDirEntryInfo{name: "subdir", size: 0, modTime: now, isDir: true, mode: os.ModeDir | 0o755, isHidden: false}.toDirEntryInfo(),
+	}
+
+	// Mock file content for line counting
+	pathAnother := filepath.Join(tempWorkingDir, "another.txt")
+	pathFile1 := filepath.Join(tempWorkingDir, "file1.txt")
+	mockFs.files[pathAnother] = []byte(anotherTxtContent)
+	mockFs.files[pathFile1] = []byte(file1TxtContent)
+
+	// Mock stats (needed by ListFiles internally for size and to skip large files)
+	mockFs.stats[pathAnother] = &filesystem.FileStats{Size: int64(len(anotherTxtContent)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
+	mockFs.stats[pathFile1] = &filesystem.FileStats{Size: int64(len(file1TxtContent)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
+	// No need to mock stats for .hiddenfile or subdir as they should be filtered out before stats are read by the tested logic
+
+	req := models.ListFilesRequest{} // MODIFIED: Path field removed
+	resp, err := service.ListFiles(req)
+
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err.Message)
+	}
+
+	if resp.TotalCount != 2 {
+		t.Errorf("Expected TotalCount 2, got %d", resp.TotalCount)
+	}
+	if len(resp.Files) != 2 {
+		t.Fatalf("Expected 2 files in response, got %d", len(resp.Files))
+	}
+
+	// Check sorting and content
+	if resp.Files[0].Name != "another.txt" {
+		t.Errorf("Expected file[0] to be 'another.txt', got %s", resp.Files[0].Name)
+	}
+	if resp.Files[0].Lines != 1 { // "some content" is 1 line
+		t.Errorf("Expected 'another.txt' to have 1 line, got %d", resp.Files[0].Lines)
+	}
+
+	if resp.Files[1].Name != "file1.txt" {
+		t.Errorf("Expected file[1] to be 'file1.txt', got %s", resp.Files[1].Name)
+	}
+	if resp.Files[1].Lines != 2 { // "more content\nnext line" is 2 lines
+		t.Errorf("Expected 'file1.txt' to have 2 lines, got %d", resp.Files[1].Lines)
+	}
+}
+
+func TestListFiles_LineCounts(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	now := time.Now()
+	// Use the service's actual maxFileSize for threshold, which is derived from config
+	// This field is not exported, but for testing purposes, we are aware of its existence and meaning.
+	// If the internal field name changes, this test would need an update.
+	// A better way might be to use a known config value that translates to this, e.g. testConfig.MaxFileSizeMB * 1024 * 1024
+	maxSizeForLineCountThreshold := service.maxFileSize // MODIFIED
+
+	// Define file contents
+	emptyContent := ""
+	normalContent := "line1\nline2\nline3"
+	tooLargeContent := "abc" // Content itself doesn't make it too large, its stat size will
+	invalidUTF8ContentBytes := []byte{0xff, 0xfe, 0xfd}
+	unreadableContent := "cannot read this"
+
+	// Mock ListDir entries
+	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{ // MODIFIED
+		mockDirEntryInfo{name: "empty.txt", size: int64(len(emptyContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
+		mockDirEntryInfo{name: "normal.txt", size: int64(len(normalContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
+		mockDirEntryInfo{name: "toolarge.txt", size: maxSizeForLineCountThreshold + 1, modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(), // MODIFIED
+		mockDirEntryInfo{name: "invalidutf8.txt", size: int64(len(invalidUTF8ContentBytes)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
+		mockDirEntryInfo{name: "unreadable_content.txt", size: int64(len(unreadableContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
+	}
+
+	// Mock file contents in mockFs.files
+	pathEmpty := filepath.Join(tempWorkingDir, "empty.txt")
+	pathNormal := filepath.Join(tempWorkingDir, "normal.txt")
+	pathTooLarge := filepath.Join(tempWorkingDir, "toolarge.txt") // Content not strictly needed as size check comes first
+	pathInvalidUTF8 := filepath.Join(tempWorkingDir, "invalidutf8.txt")
+	pathUnreadable := filepath.Join(tempWorkingDir, "unreadable_content.txt")
+
+	mockFs.files[pathEmpty] = []byte(emptyContent)
+	mockFs.files[pathNormal] = []byte(normalContent)
+	mockFs.files[pathTooLarge] = []byte(tooLargeContent) // mock an actual file for GetFileStats if it tries to read it
+	mockFs.files[pathInvalidUTF8] = invalidUTF8ContentBytes
+	mockFs.files[pathUnreadable] = []byte(unreadableContent)
+
+	// Mock stats (especially for toolarge.txt)
+	mockFs.stats[pathEmpty] = &filesystem.FileStats{Size: int64(len(emptyContent)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
+	mockFs.stats[pathNormal] = &filesystem.FileStats{Size: int64(len(normalContent)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
+	mockFs.stats[pathTooLarge] = &filesystem.FileStats{Size: maxSizeForLineCountThreshold + 1, ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed and used threshold
+	mockFs.stats[pathInvalidUTF8] = &filesystem.FileStats{Size: int64(len(invalidUTF8ContentBytes)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
+	mockFs.stats[pathUnreadable] = &filesystem.FileStats{Size: int64(len(unreadableContent)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
+
+
+	// Mock specific behaviors
+	mockFs.readFileErrorForPath[pathUnreadable] = fmt.Errorf("mock error reading unreadable_content.txt")
+	mockFs.isInvalidUTF8Content[string(invalidUTF8ContentBytes)] = true
+
+
+	req := models.ListFilesRequest{} // MODIFIED: Path field removed
+	resp, err := service.ListFiles(req)
+
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err.Message)
+	}
+
+	if resp.TotalCount != 5 {
+		t.Errorf("Expected TotalCount 5, got %d", resp.TotalCount)
+	}
+	if len(resp.Files) != 5 {
+		t.Fatalf("Expected 5 files in response, got %d", len(resp.Files))
+	}
+
+	// Create a map for easy lookup and verification
+	results := make(map[string]models.FileInfo)
+	for _, f := range resp.Files {
+		results[f.Name] = f
+	}
+
+	expectedLines := map[string]int{
+		"empty.txt":              0,
+		"normal.txt":             3,
+		"toolarge.txt":           -1,
+		"invalidutf8.txt":        -1,
+		"unreadable_content.txt": -1,
+	}
+
+	for name, expectedLineCount := range expectedLines {
+		fileInfo, ok := results[name]
+		if !ok {
+			t.Errorf("Expected file %s in results, but not found", name)
+			continue
+		}
+		if fileInfo.Lines != expectedLineCount { // MODIFIED: Removed int64 cast
+			t.Errorf("File %s: expected %d lines, got %d lines", name, expectedLineCount, fileInfo.Lines)
+		}
+	}
+}
 // Main entry point for tests to ensure cleanup runs
 func TestMain(m *testing.M) {
 	// Run tests
 	code := m.Run()
 	// No global setup/cleanup needed here as individual tests handle it
 	os.Exit(code)
+}
+
+// --- UTF-8 Validation in EditFile Tests ---
+
+func TestEditFile_Error_InvalidUTF8_InEditOperation_Replace(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	filename := "test_utf8_edit_replace.txt"
+	fullPath := filepath.Join(tempWorkingDir, filename)
+	invalidUTF8Content := string([]byte{0xff, 0xfe, 0xfd})
+
+	// Setup an existing file
+	mockFs.files[fullPath] = []byte("line1\nline2")
+	mockFs.stats[fullPath] = &filesystem.FileStats{Size: 11, IsDir: false, ModTime: time.Now()}
+
+	req := models.EditFileRequest{
+		Name: filename,
+		Edits: []models.EditOperation{
+			{Line: 1, Operation: "replace", Content: invalidUTF8Content},
+		},
+	}
+
+	_, err := service.EditFile(req)
+
+	if err == nil {
+		t.Fatal("EditFile expected to fail for invalid UTF-8 in replace operation, but succeeded")
+	}
+
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	if !strings.Contains(err.Message, "content contains invalid UTF-8 encoding") {
+		t.Errorf("Expected error message to indicate invalid UTF-8 in edit content, but got: %s", err.Message)
+	}
+}
+
+func TestEditFile_Error_InvalidUTF8_InEditOperation_Insert(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	filename := "test_utf8_edit_insert.txt"
+	fullPath := filepath.Join(tempWorkingDir, filename)
+	invalidUTF8Content := string([]byte{0xff, 0xfe, 0xfd})
+
+	// Setup an existing file
+	mockFs.files[fullPath] = []byte("line1\nline2")
+	mockFs.stats[fullPath] = &filesystem.FileStats{Size: 11, IsDir: false, ModTime: time.Now()}
+
+	req := models.EditFileRequest{
+		Name: filename,
+		Edits: []models.EditOperation{
+			{Line: 1, Operation: "insert", Content: invalidUTF8Content},
+		},
+	}
+
+	_, err := service.EditFile(req)
+
+	if err == nil {
+		t.Fatal("EditFile expected to fail for invalid UTF-8 in insert operation, but succeeded")
+	}
+
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	if !strings.Contains(err.Message, "content contains invalid UTF-8 encoding") {
+		t.Errorf("Expected error message to indicate invalid UTF-8 in edit content, but got: %s", err.Message)
+	}
+}
+
+func TestEditFile_Error_InvalidUTF8_InAppendContent(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	filename := "test_utf8_append.txt"
+	fullPath := filepath.Join(tempWorkingDir, filename)
+	invalidUTF8Content := string([]byte{0xff, 0xfe, 0xfd})
+
+	// Setup an existing file (or allow creation, doesn't matter much as validation is pre-fs)
+	mockFs.files[fullPath] = []byte("line1")
+	mockFs.stats[fullPath] = &filesystem.FileStats{Size: 5, IsDir: false, ModTime: time.Now()}
+
+	req := models.EditFileRequest{
+		Name:            filename,
+		CreateIfMissing: true,
+		Append:          invalidUTF8Content,
+		Edits: []models.EditOperation{ // Can have valid edits or be empty
+			{Line: 1, Operation: "replace", Content: "valid line"},
+		},
+	}
+
+	_, err := service.EditFile(req)
+
+	if err == nil {
+		t.Fatal("EditFile expected to fail for invalid UTF-8 in append operation, but succeeded")
+	}
+
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	if !strings.Contains(err.Message, "Append content contains invalid UTF-8 encoding") {
+		t.Errorf("Expected error message to indicate invalid UTF-8 in append content, but got: %s", err.Message)
+	}
+}
+
+
+// --- Symlink and Path Validation Tests ---
+
+func TestReadFile_Symlink_Allowed(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	targetFilename := "target.txt"
+	symlinkFilename := "symlink.txt"
+	targetContent := "This is the target content."
+
+	absTargetFile := filepath.Join(tempWorkingDir, targetFilename)
+	absSymlinkFile := filepath.Join(tempWorkingDir, symlinkFilename)
+
+	// Setup: symlink.txt -> target.txt (both within workingDir)
+	mockFs.evalSymlinksPaths[absSymlinkFile] = absTargetFile
+
+	// Mock file system state for the symlink path, as ReadFile operates on it.
+	// The mock adapter needs to make the symlink path behave like its target for read/stat.
+	mockFs.files[absSymlinkFile] = []byte(targetContent)
+	mockFs.stats[absSymlinkFile] = &filesystem.FileStats{
+		Size:    int64(len(targetContent)),
+		IsDir:   false,
+		ModTime: time.Now(),
+		Mode:    0644,
+	}
+	// Actual target file should also exist in mock for completeness if any part of the code
+	// (not current ReadFile directly after resolveAndValidatePath) tries to access it by its real name.
+	mockFs.files[absTargetFile] = []byte(targetContent)
+	mockFs.stats[absTargetFile] = &filesystem.FileStats{
+		Size:    int64(len(targetContent)),
+		IsDir:   false,
+		ModTime: time.Now(),
+		Mode:    0644,
+	}
+
+
+	req := models.ReadFileRequest{Name: symlinkFilename}
+	resp, err := service.ReadFile(req)
+
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err.Message)
+	}
+	if resp.Content != targetContent {
+		t.Errorf("Expected content %q, got %q", targetContent, resp.Content)
+	}
+}
+
+func TestReadFile_Symlink_Traversal_Denied(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	symlinkFilename := "symlink_outside.txt"
+	absSymlinkFile := filepath.Join(tempWorkingDir, symlinkFilename)
+	outsidePath := "/etc/passwd" // A path outside tempWorkingDir
+
+	// Setup: symlink_outside.txt -> /etc/passwd
+	mockFs.evalSymlinksPaths[absSymlinkFile] = outsidePath
+	// No need to mock content for symlink_outside.txt or /etc/passwd,
+	// as the operation should fail due to path traversal before any read attempt.
+	// Stats for absSymlinkFile might be needed if FileExists is called on it before EvalSymlinks check fully denies.
+	// However, resolveAndValidatePath should catch this.
+	// Let's assume the symlink itself exists.
+	mockFs.stats[absSymlinkFile] = &filesystem.FileStats{
+		Size:    50, // Arbitrary size for the symlink file itself
+		IsDir:   false,
+		ModTime: time.Now(),
+		Mode:    0777, // Symlinks often have 0777 mode
+	}
+
+
+	req := models.ReadFileRequest{Name: symlinkFilename}
+	_, err := service.ReadFile(req)
+
+	if err == nil {
+		t.Fatal("ReadFile expected to fail for symlink traversal, but succeeded")
+	}
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	if !strings.Contains(err.Message, "Path traversal attempt detected") {
+		t.Errorf("Expected error message to contain 'Path traversal attempt detected', but got: %s", err.Message)
+	}
+}
+
+func TestReadFile_FilenameTooLong(t *testing.T) {
+	service, _, _ := setup(t) // mockFs might not be strictly needed if validation happens before fs ops
+	defer cleanup(t)
+
+	// defaultMaxFilenameLength is a const (255) in service package, not exported from service instance.
+	// We use the known value here for the test.
+	maxLength := 255
+	longFilename := strings.Repeat("a", maxLength+1)
+
+	req := models.ReadFileRequest{Name: longFilename}
+	_, err := service.ReadFile(req)
+
+	if err == nil {
+		t.Fatalf("ReadFile expected to fail for filename too long, but succeeded")
+	}
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	expectedMsgPart := fmt.Sprintf("Filename length must be between 1 and %d characters", maxLength)
+	if !strings.Contains(err.Message, expectedMsgPart) {
+		t.Errorf("Expected error message to contain '%s', but got: %s", expectedMsgPart, err.Message)
+	}
+}
+
+func TestEditFile_FilenameTooLong(t *testing.T) {
+	service, _, _ := setup(t)
+	defer cleanup(t)
+
+	maxLength := 255
+	longFilename := strings.Repeat("b", maxLength+1)
+
+	req := models.EditFileRequest{
+		Name: longFilename,
+		Edits: []models.EditOperation{{Line: 1, Operation: "insert", Content: "test"}},
+	}
+	_, err := service.EditFile(req)
+
+	if err == nil {
+		t.Fatalf("EditFile expected to fail for filename too long, but succeeded")
+	}
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	expectedMsgPart := fmt.Sprintf("Filename length must be between 1 and %d characters", maxLength)
+	if !strings.Contains(err.Message, expectedMsgPart) {
+		t.Errorf("Expected error message to contain '%s', but got: %s", expectedMsgPart, err.Message)
+	}
+}
+
+func TestReadFile_Symlink_Dangling(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	symlinkFilename := "dangling_symlink.txt"
+	absSymlinkFile := filepath.Join(tempWorkingDir, symlinkFilename)
+
+	// Setup: dangling_symlink.txt -> nonexistent_target.txt
+	// Mock EvalSymlinks to return an error that os.IsNotExist will catch
+	simulatedError := fmt.Errorf("mock EvalSymlinks error: target does not exist: %w", os.ErrNotExist)
+	mockFs.evalSymlinksErrorForPath[absSymlinkFile] = simulatedError
+
+	// The symlink itself exists, so it might have stats.
+	mockFs.stats[absSymlinkFile] = &filesystem.FileStats{
+		Size:    20, // Arbitrary size for the symlink file
+		IsDir:   false,
+		ModTime: time.Now(),
+		Mode:    0777,
+	}
+
+	req := models.ReadFileRequest{Name: symlinkFilename}
+	_, err := service.ReadFile(req)
+
+	if err == nil {
+		t.Fatal("ReadFile expected to fail for dangling symlink, but succeeded")
+	}
+
+	// resolveAndValidatePath should convert os.ErrNotExist from EvalSymlinks
+	// into a errors.NewFileNotFoundError, which has CodeFileSystemError.
+	if err.Code != errors.CodeFileSystemError {
+		t.Errorf("Expected error code %d (CodeFileSystemError), got %d. Message: %s", errors.CodeFileSystemError, err.Code, err.Message)
+	}
+
+	// Check for "file_not_found" type in error Data
+	if dataMap, ok := err.Data.(map[string]interface{}); ok {
+		if errorType, exists := dataMap["type"].(string); !exists || errorType != "file_not_found" {
+			t.Errorf("Expected error data type 'file_not_found', got '%v'", dataMap["type"])
+		}
+		// Check that the operation indicates the context of eval_symlinks
+		if operation, exists := dataMap["operation"].(string); !exists || operation != "eval_symlinks_path_not_found" {
+			t.Errorf("Expected error data operation 'eval_symlinks_path_not_found', got '%v'", dataMap["operation"])
+		}
+	} else {
+		t.Errorf("Expected error Data to be a map[string]interface{} for type check")
+	}
+}
+
+func TestEditFile_Symlink_Allowed(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	targetFilename := "target.txt"
+	symlinkFilename := "symlink.txt"
+	initialTargetContent := "Initial target content."
+	editContent := "New content after edit."
+
+	absTargetFile := filepath.Join(tempWorkingDir, targetFilename)
+	absSymlinkFile := filepath.Join(tempWorkingDir, symlinkFilename)
+
+	// Setup: symlink.txt -> target.txt
+	mockFs.evalSymlinksPaths[absSymlinkFile] = absTargetFile
+
+	// Mock file system state for the symlink path
+	mockFs.files[absSymlinkFile] = []byte(initialTargetContent)
+	mockFs.stats[absSymlinkFile] = &filesystem.FileStats{
+		Size:    int64(len(initialTargetContent)),
+		IsDir:   false,
+		ModTime: time.Now(),
+		Mode:    0644,
+	}
+	// Actual target also exists
+	mockFs.files[absTargetFile] = []byte(initialTargetContent)
+	mockFs.stats[absTargetFile] = &filesystem.FileStats{
+		Size:    int64(len(initialTargetContent)),
+		IsDir:   false,
+		ModTime: time.Now(),
+		Mode:    0644,
+	}
+
+	req := models.EditFileRequest{
+		Name: symlinkFilename,
+		Edits: []models.EditOperation{
+			{Line: 1, Operation: "replace", Content: editContent},
+		},
+	}
+	resp, err := service.EditFile(req)
+
+	if err != nil {
+		t.Fatalf("EditFile failed: %v", err.Message)
+	}
+	if !resp.Success {
+		t.Error("EditFile was not successful")
+	}
+
+	// Verify that the content of absSymlinkFile (which represents the target via OS behavior) was changed.
+	// Our mock WriteFileBytesAtomic writes to the given path, so absSymlinkFile's content in mockFs.files will be updated.
+	if string(mockFs.files[absSymlinkFile]) != editContent {
+		t.Errorf("Expected content %q for symlink path, got %q", editContent, string(mockFs.files[absSymlinkFile]))
+	}
+	// Additionally, if the mock adapter were more sophisticated, it would update absTargetFile.
+	// For this test, we assume the service correctly passed absSymlinkFile to WriteFileBytesAtomic.
+}
+
+func TestEditFile_Symlink_Traversal_Denied(t *testing.T) {
+	service, mockFs, _ := setup(t)
+	defer cleanup(t)
+
+	symlinkFilename := "symlink_outside.txt"
+	absSymlinkFile := filepath.Join(tempWorkingDir, symlinkFilename)
+	outsidePath := "/etc/passwd"
+
+	// Setup: symlink_outside.txt -> /etc/passwd
+	mockFs.evalSymlinksPaths[absSymlinkFile] = outsidePath
+	mockFs.stats[absSymlinkFile] = &filesystem.FileStats{Size: 50, IsDir: false, ModTime: time.Now(), Mode: 0777}
+
+
+	req := models.EditFileRequest{
+		Name: symlinkFilename,
+		Edits: []models.EditOperation{
+			{Line: 1, Operation: "insert", Content: "hacked"},
+		},
+		CreateIfMissing: false, // Ensure it doesn't try to create /etc/passwd
+	}
+	_, err := service.EditFile(req)
+
+	if err == nil {
+		t.Fatal("EditFile expected to fail for symlink traversal, but succeeded")
+	}
+	if err.Code != errors.CodeInvalidParams {
+		t.Errorf("Expected error code %d (InvalidParams), got %d. Message: %s", errors.CodeInvalidParams, err.Code, err.Message)
+	}
+	if !strings.Contains(err.Message, "Path traversal attempt detected") {
+		t.Errorf("Expected error message to contain 'Path traversal attempt detected', but got: %s", err.Message)
+	}
 }
