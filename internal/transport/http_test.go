@@ -64,7 +64,9 @@ func TestHTTPHandler_handleReadFile_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
@@ -94,7 +96,9 @@ func TestHTTPHandler_handleReadFile_ServiceError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// File not found -> maps to 404
 	expectedStatus := http.StatusNotFound
@@ -121,7 +125,9 @@ func TestHTTPHandler_handleReadFile_InvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected status %d, got %d", http.StatusBadRequest, resp.StatusCode)
@@ -146,7 +152,9 @@ func TestHTTPHandler_handleReadFile_BodyTooLarge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("expected status %d, got %d", http.StatusRequestEntityTooLarge, resp.StatusCode)
@@ -175,7 +183,9 @@ func TestHTTPHandler_handleReadFile_WrongMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("expected status %d, got %d", http.StatusMethodNotAllowed, resp.StatusCode)
@@ -200,7 +210,9 @@ func TestHTTPHandler_handleEditFile_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
@@ -229,7 +241,9 @@ func TestHTTPHandler_handleEditFile_ServiceError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusBadRequest { // InvalidParams maps to 400
 		t.Errorf("expected status %d, got %d", http.StatusBadRequest, resp.StatusCode)
@@ -252,7 +266,9 @@ func TestHTTPHandler_HealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET request to /health failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status %d for /health, got %d", http.StatusOK, resp.StatusCode)
@@ -335,7 +351,9 @@ func TestHTTPHandler_handleReadFile_DisallowUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusBadRequest { // Expecting bad request due to unknown field
 		bodyBytes, _ := io.ReadAll(resp.Body)

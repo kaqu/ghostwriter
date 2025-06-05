@@ -99,7 +99,9 @@ func (h *HTTPHandler) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxReqSize)
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	var req models.ReadFileRequest
 	decoder := json.NewDecoder(r.Body)
@@ -154,7 +156,9 @@ func (h *HTTPHandler) handleEditFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxReqSize)
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	var req models.EditFileRequest
 	decoder := json.NewDecoder(r.Body)
@@ -250,7 +254,9 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength > 0 {
 		// MaxBytesReader to prevent large empty bodies if someone sends one.
 		r.Body = http.MaxBytesReader(w, r.Body, 1024) // Limit empty body to 1KB
-		defer r.Body.Close()
+		defer func() {
+			_ = r.Body.Close()
+		}()
 
 		decoder := json.NewDecoder(r.Body)
 		decoder.DisallowUnknownFields()
