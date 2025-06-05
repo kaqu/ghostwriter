@@ -1,9 +1,12 @@
 package lock
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/gofrs/flock"
 )
 
 var (
@@ -25,6 +28,7 @@ const (
 // LockInfo holds information about an acquired lock.
 type LockInfo struct {
 	AcquiredAt time.Time
+	FLock      *flock.Flock
 	// OwnerID could be used for debugging, e.g., goroutine ID.
 	// For simplicity, it's omitted for now as it's not strictly needed for locking logic.
 }
@@ -75,34 +79,32 @@ func (lm *LockManager) AcquireLock(filename string, timeout time.Duration) error
 		lm.currentLockCount++
 		lm.mu.Unlock()
 
-		// Try to acquire the specific file lock
-		newLockInfo := &LockInfo{AcquiredAt: time.Now()}
-		_, loaded := lm.locks.LoadOrStore(filename, newLockInfo)
-
-		if !loaded {
-			// Lock acquired successfully
+		// Try to acquire the specific file lock using filesystem locking
+		fileLock := flock.New(filename + ".lock")
+		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		locked, err := fileLock.TryLockContext(ctx, shortPollInterval)
+		cancel()
+		if err != nil {
+			lm.mu.Lock()
+			lm.currentLockCount--
+			lm.mu.Unlock()
+			return fmt.Errorf("error acquiring file lock for %s: %w", filename, err)
+		}
+		if locked {
+			newLockInfo := &LockInfo{AcquiredAt: time.Now(), FLock: fileLock}
+			lm.locks.Store(filename, newLockInfo)
 			return nil
 		}
 
-		// Lock was already present (loaded = true), decrement global count and prepare to wait for this specific lock
+		// Failed to acquire within timeout
 		lm.mu.Lock()
 		lm.currentLockCount--
 		lm.mu.Unlock()
-
-		// File is locked by someone else, wait for it or timeout for this specific file
-		for {
-			if _, ok := lm.locks.Load(filename); !ok {
-				// Lock was released, break inner loop and retry acquiring in the outer loop
-				// This ensures the global lock count is checked again.
-				break
-			}
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout acquiring lock for file %s: %w", filename, ErrLockTimeout)
-			}
-			time.Sleep(shortPollInterval)
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout acquiring lock for file %s: %w", filename, ErrLockTimeout)
 		}
-		// If we broke from inner loop because lock was released, the outer loop will retry.
-		// If we are here after deadline check, it's an error (already returned).
+		// wait a bit before retrying
+		time.Sleep(shortPollInterval)
 	}
 }
 
@@ -112,8 +114,13 @@ func (lm *LockManager) ReleaseLock(filename string) error {
 		return ErrFilenameRequired
 	}
 
-	if _, loaded := lm.locks.LoadAndDelete(filename); !loaded {
+	v, loaded := lm.locks.LoadAndDelete(filename)
+	if !loaded {
 		return fmt.Errorf("attempted to release a non-existent lock for file %s: %w", filename, ErrLockNotFound)
+	}
+	info := v.(*LockInfo)
+	if info.FLock != nil {
+		_ = info.FLock.Unlock()
 	}
 
 	lm.mu.Lock()
@@ -145,25 +152,11 @@ func (lm *LockManager) CleanupExpiredLocks() {
 		}
 
 		if now.Sub(lockInfo.AcquiredAt) > lm.defaultLockTimeout {
-			// Lock has expired, attempt to release it
-			// Use ReleaseLock to correctly decrement global counter
-			// We need to be careful here: if ReleaseLock is called, it will try to LoadAndDelete.
-			// If another goroutine just released it, LoadAndDelete might fail.
-			// It's safer to just Delete and decrement count if we know it's expired.
-
-			// Check again before deleting, in case it was released and re-acquired.
 			currentLockInfo, loaded := lm.locks.Load(filename)
-			if loaded && currentLockInfo == lockInfo { // Ensure it's the same lock we deemed expired
+			if loaded && currentLockInfo == lockInfo {
+				_ = lockInfo.FLock.Unlock()
 				lm.locks.Delete(filename)
 				lm.mu.Lock()
-				// Only decrement if the lock we are cleaning up was indeed still considered active
-				// This check helps prevent double-decrementing if a lock is released normally
-				// right as cleanup is happening. The `currentLockInfo == lockInfo` check helps.
-				// A more robust way might involve checking if the lockInfo on the map is still the one we read.
-				// For simplicity here, if we delete it, we decrement.
-				// This could be an issue if a lock expires, is deleted by cleanup,
-				// then another thread tries to release it. Release would fail.
-				// The main protection is that normal operations should release locks before they expire.
 				if lm.currentLockCount > 0 {
 					lm.currentLockCount--
 				}
