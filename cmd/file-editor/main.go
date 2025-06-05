@@ -7,10 +7,9 @@ import (
 	"file-editor-server/internal/lock"
 	"file-editor-server/internal/service"
 	"file-editor-server/internal/transport"
-	// "fmt" // Removed as it's unused
 	"log"
-	"math"     // Added import
-	"net/http" // Required for http.Server in graceful shutdown
+	"math"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,11 +35,6 @@ func main() {
 		os.Exit(1)
 	}
 	log.Println("Core services initialized successfully.")
-
-	// --- Shutdown context ---
-	// Create a context that can be cancelled for graceful shutdown
-	// mainCtx, cancel := context.WithCancel(context.Background())
-	// defer cancel() // Ensure all paths cancel the context
 
 	// 7. Setup and wait for shutdown signal
 	// This will be slightly different for HTTP vs stdio regarding server instance
@@ -173,14 +167,6 @@ func main() {
 			// In a real daemon, you might send a specific "shutdown" JSON-RPC message if the protocol supports it.
 		}
 
-		// Wait for the server goroutine to finish, or timeout
-		// select {
-		// case <-serverDoneChan:
-		//	log.Println("Server goroutine finished.")
-		// case <-time.After(shutdownTimeout):
-		//	log.Println("Timeout waiting for server goroutine to finish.")
-		// }
-
 	case err := <-serverDoneChan:
 		if err != nil {
 			log.Printf("Server/handler stopped due to error: %v\n", err)
@@ -227,25 +213,5 @@ func logEffectiveConfig(cfg *config.Config) {
 		log.Printf("  HTTP Port: %d\n", cfg.Port)
 	}
 	log.Printf("  Max File Size (MB): %d\n", cfg.MaxFileSizeMB)
-	// log.Printf("  Max Concurrent Ops: %d\n", cfg.MaxConcurrentOps) // Removed logging for MaxConcurrentOps
 	log.Printf("  Operation Timeout (sec): %d\n", cfg.OperationTimeoutSec)
 }
-
-// Note: The http.Server instance needs to be accessible for graceful shutdown.
-// transport.HTTPHandler.StartServer would need to be refactored to either:
-// 1. Return the *http.Server instance.
-// 2. Accept a context that can be canceled to trigger shutdown internally.
-// 3. Have a separate Shutdown method.
-// This implementation sketch assumes such a mechanism can be added to http.go.
-// For stdio, graceful shutdown is typically handled by closing stdin or an EOF signal.
-// The current code provides the structure for signal handling.
-// The `httpServer` variable is declared but not assigned from `StartServer` due to current `StartServer` signature.
-// Proper graceful HTTP shutdown requires that refactor.
-
-// Placeholder for the http.Server instance that would be managed by HTTPHandler
-// var globalHTTPServer *http.Server // This is not ideal, better to pass context or use channels
-
-// The current StartServer in http.go is blocking and handles its own logging.
-// For graceful shutdown, it would typically run in a goroutine, and main would hold the server instance.
-// The refactor of http.go's StartServer to support this is outside this specific subtask's direct changes
-// but is noted for completeness of graceful shutdown.

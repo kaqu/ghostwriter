@@ -2,7 +2,7 @@ package transport
 
 import (
 	"bufio"
-	"bytes" // Added bytes import
+	"bytes"
 	"encoding/json"
 	"file-editor-server/internal/errors"
 	"file-editor-server/internal/models"
@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	// "os" // Removed
-	// "strings" // Removed
 	"time"
 )
 
@@ -95,7 +93,6 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 			continue
 		}
 
-		// var serviceReqData interface{} // Removed as it was not strictly needed
 		var serviceRespData interface{}
 		var serviceErr *models.ErrorDetail
 

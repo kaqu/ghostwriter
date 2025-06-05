@@ -33,7 +33,7 @@ type FileOperationService interface {
 // DefaultFileOperationService implements the FileOperationService interface.
 type DefaultFileOperationService struct {
 	fsAdapter     filesystem.FileSystemAdapter
-	lockManager   lock.LockManagerInterface // Changed to interface
+	lockManager   lock.LockManagerInterface
 	workingDir    string
 	maxFileSize   int64 // in bytes
 	maxLineCount  int
@@ -44,7 +44,7 @@ type DefaultFileOperationService struct {
 // NewDefaultFileOperationService creates a new DefaultFileOperationService.
 func NewDefaultFileOperationService(
 	fs filesystem.FileSystemAdapter,
-	lm lock.LockManagerInterface, // Changed to interface
+	lm lock.LockManagerInterface,
 	cfg *config.Config,
 ) (*DefaultFileOperationService, error) {
 	if cfg == nil {
@@ -75,7 +75,7 @@ func NewDefaultFileOperationService(
 	// Writability check is also good, but fsAdapter.IsWritable can be used by the service itself if needed.
 	// The config validation already does a basic writability check.
 
-	filenameRegex, err := regexp.Compile("^[a-zA-Z0-9._-]+$") // Changed regex
+	filenameRegex, err := regexp.Compile("^[a-zA-Z0-9._-]+$")
 	if err != nil {
 		// This should not happen with a static regex
 		return nil, fmt.Errorf("failed to compile filename regex: %w", err)
@@ -120,7 +120,7 @@ func (s *DefaultFileOperationService) resolveAndValidatePath(filename string) (s
 		return "", errors.NewInvalidParamsError("Path traversal attempt detected (pre-symlink).", map[string]interface{}{"filename": filename}, filename, "path_resolution")
 	}
 
-	resolvedPath, symlinkErr := s.fsAdapter.EvalSymlinks(cleanedPath) // New adapter method
+	resolvedPath, symlinkErr := s.fsAdapter.EvalSymlinks(cleanedPath)
 	if symlinkErr != nil {
 		// Handle errors from EvalSymlinks, e.g., if path doesn't exist after cleaning,
 		// or if a component of the path used as a symlink target does not exist.
@@ -366,8 +366,6 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 	}
 	defer func() {
 		if err := s.lockManager.ReleaseLock(req.Name); err != nil {
-			// Using fmt.Printf as 'log' package is not imported in this file.
-			// In a real application, a consistent logging strategy would be used.
 			fmt.Printf("Error releasing lock for file '%s' in defer: %v\n", req.Name, err)
 		}
 	}()

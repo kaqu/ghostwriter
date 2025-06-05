@@ -14,7 +14,6 @@ type Config struct {
 	Transport        string
 	Port             int
 	MaxFileSizeMB    int
-	// MaxConcurrentOps    int // Removed as per specification
 	OperationTimeoutSec int
 }
 
@@ -25,9 +24,8 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.WorkingDirectory, "dir", "", "Path to the working directory (required)")
 	flag.StringVar(&cfg.Transport, "transport", "http", "Transport protocol (http or stdio)")
 	flag.IntVar(&cfg.Port, "port", 8080, "Port for HTTP transport")
-	flag.IntVar(&cfg.MaxFileSizeMB, "max-size", 10, "Maximum file size in MB") // Renamed from -max-file-size
-	// flag.IntVar(&cfg.MaxConcurrentOps, "max-concurrent", 10, "Maximum concurrent operations") // Removed as per specification
-	flag.IntVar(&cfg.OperationTimeoutSec, "timeout", 10, "Operation timeout in seconds") // Default changed to 10
+	flag.IntVar(&cfg.MaxFileSizeMB, "max-size", 10, "Maximum file size in MB")
+	flag.IntVar(&cfg.OperationTimeoutSec, "timeout", 10, "Operation timeout in seconds")
 
 	flag.Parse()
 	return cfg
@@ -75,8 +73,6 @@ func (c *Config) Validate() error {
 	if c.MaxFileSizeMB < 1 || c.MaxFileSizeMB > 100 {
 		return fmt.Errorf("max file size must be between 1 and 100 MB")
 	}
-
-	// Validation for MaxConcurrentOps removed as per specification
 
 	if c.OperationTimeoutSec < 1 || c.OperationTimeoutSec > 300 { // Adjusted validation range
 		return fmt.Errorf("operation timeout must be between 1 and 300 seconds")

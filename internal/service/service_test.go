@@ -25,14 +25,12 @@ type mockFileSystemAdapter struct {
 	isWritableResult     bool
 	isWritableShouldFail bool
 	isValidUTF8Result    bool
-	listDirShouldFail    bool                                 // New
-	listDirEntries       map[string][]filesystem.DirEntryInfo // MODIFIED
-	readFileErrorForPath map[string]error                     // New
-	isInvalidUTF8Content map[string]bool                      // New
-	// evalSymlinksPath      string             // REMOVED global evalSymlinksPath
-	// evalSymlinksError     error              // REMOVED global evalSymlinksError
-	evalSymlinksPaths        map[string]string // New: fromPath -> toPath
-	evalSymlinksErrorForPath map[string]error  // New: fromPath -> error
+	listDirShouldFail    bool
+	listDirEntries       map[string][]filesystem.DirEntryInfo
+	readFileErrorForPath map[string]error
+	isInvalidUTF8Content map[string]bool
+	evalSymlinksPaths        map[string]string
+	evalSymlinksErrorForPath map[string]error
 	// Add more controls as needed
 }
 
@@ -64,18 +62,18 @@ func newMockFsAdapter() *mockFileSystemAdapter {
 	return &mockFileSystemAdapter{
 		files:                    make(map[string][]byte),
 		stats:                    make(map[string]*filesystem.FileStats),
-		listDirEntries:           make(map[string][]filesystem.DirEntryInfo), // MODIFIED
-		readFileErrorForPath:     make(map[string]error),                     // New
-		isInvalidUTF8Content:     make(map[string]bool),                      // New
-		isValidUTF8Result:        true,                                       // Default to valid UTF-8
+		listDirEntries:           make(map[string][]filesystem.DirEntryInfo),
+		readFileErrorForPath:     make(map[string]error),
+		isInvalidUTF8Content:     make(map[string]bool),
+		isValidUTF8Result:        true, // Default to valid UTF-8
 		isWritableResult:         true,
-		evalSymlinksPaths:        make(map[string]string), // New
-		evalSymlinksErrorForPath: make(map[string]error),  // New
+		evalSymlinksPaths:        make(map[string]string),
+		evalSymlinksErrorForPath: make(map[string]error),
 	}
 }
 
 func (m *mockFileSystemAdapter) ReadFileBytes(filePath string) ([]byte, error) {
-	if err, specificError := m.readFileErrorForPath[filePath]; specificError { // New
+	if err, specificError := m.readFileErrorForPath[filePath]; specificError {
 		return nil, err
 	}
 	if m.readShouldFail {
@@ -133,7 +131,7 @@ func (m *mockFileSystemAdapter) IsWritable(path string) (bool, error) {
 	return m.isWritableResult, nil
 }
 func (m *mockFileSystemAdapter) IsValidUTF8(content []byte) bool {
-	if invalid, exists := m.isInvalidUTF8Content[string(content)]; exists && invalid { // New
+	if invalid, exists := m.isInvalidUTF8Content[string(content)]; exists && invalid {
 		return false
 	}
 	return m.isValidUTF8Result
@@ -164,7 +162,7 @@ func (m *mockFileSystemAdapter) JoinLinesWithNewlines(lines []string) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
-func (m *mockFileSystemAdapter) ListDir(dirPath string) ([]filesystem.DirEntryInfo, error) { // MODIFIED Signature
+func (m *mockFileSystemAdapter) ListDir(dirPath string) ([]filesystem.DirEntryInfo, error) {
 	if m.listDirShouldFail {
 		return nil, fmt.Errorf("mock ListDir error")
 	}
@@ -175,7 +173,7 @@ func (m *mockFileSystemAdapter) ListDir(dirPath string) ([]filesystem.DirEntryIn
 	return entries, nil
 }
 
-func (m *mockFileSystemAdapter) EvalSymlinks(path string) (string, error) { // MODIFIED to use maps
+func (m *mockFileSystemAdapter) EvalSymlinks(path string) (string, error) {
 	if err, ok := m.evalSymlinksErrorForPath[path]; ok {
 		return "", err
 	}
@@ -365,7 +363,7 @@ func TestReadFile_Error_FileTooLarge(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
-	if err.Code != errors.CodeFileSystemError { // MODIFIED: Check for generic file system error
+	if err.Code != errors.CodeFileSystemError {
 		t.Errorf("Expected CodeFileSystemError (%d), got %d (%s)", errors.CodeFileSystemError, err.Code, err.Message)
 	}
 	// Optionally, check for the specific type in Data
@@ -386,14 +384,14 @@ func TestReadFile_Error_InvalidUTF8(t *testing.T) {
 	invalidContent := []byte{0xff, 0xfe, 0xfd} // Invalid UTF-8 sequence
 	mockFs.files[fullPath] = invalidContent
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(len(invalidContent)), IsDir: false}
-	mockFs.isInvalidUTF8Content[string(invalidContent)] = true // MODIFIED: Use map
+	mockFs.isInvalidUTF8Content[string(invalidContent)] = true
 
 	req := models.ReadFileRequest{Name: filename}
 	_, err := service.ReadFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
-	if err.Code != errors.CodeFileSystemError { // MODIFIED: Expected CodeFileSystemError
+	if err.Code != errors.CodeFileSystemError {
 		t.Errorf("Expected CodeFileSystemError (%d), got %d (%s)", errors.CodeFileSystemError, err.Code, err.Message)
 	}
 
@@ -635,7 +633,7 @@ func TestEditFile_Error_ContentTooLargeAfterEdit(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
-	if err.Code != errors.CodeFileSystemError { // MODIFIED: Check for generic file system error
+	if err.Code != errors.CodeFileSystemError {
 		t.Errorf("Expected CodeFileSystemError, got %d (%s)", errors.CodeFileSystemError, err.Message)
 	}
 	// Optionally, check for the specific type in Data
@@ -780,9 +778,9 @@ func TestListFiles_EmptyDirectory(t *testing.T) {
 	defer cleanup(t)
 
 	// Configure ListDir to return an empty list for the root working directory
-	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{} // MODIFIED
+	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{}
 
-	req := models.ListFilesRequest{} // MODIFIED: Path field removed
+	req := models.ListFilesRequest{}
 	resp, err := service.ListFiles(req)
 
 	if err != nil {
@@ -820,11 +818,11 @@ func TestListFiles_WithFilesHiddenAndDirs(t *testing.T) {
 	mockFs.files[pathFile1] = []byte(file1TxtContent)
 
 	// Mock stats (needed by ListFiles internally for size and to skip large files)
-	mockFs.stats[pathAnother] = &filesystem.FileStats{Size: int64(len(anotherTxtContent)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
-	mockFs.stats[pathFile1] = &filesystem.FileStats{Size: int64(len(file1TxtContent)), ModTime: now, IsDir: false, Mode: 0o644}     // MODIFIED: Name field removed
+	mockFs.stats[pathAnother] = &filesystem.FileStats{Size: int64(len(anotherTxtContent)), ModTime: now, IsDir: false, Mode: 0o644}
+	mockFs.stats[pathFile1] = &filesystem.FileStats{Size: int64(len(file1TxtContent)), ModTime: now, IsDir: false, Mode: 0o644}
 	// No need to mock stats for .hiddenfile or subdir as they should be filtered out before stats are read by the tested logic
 
-	req := models.ListFilesRequest{} // MODIFIED: Path field removed
+	req := models.ListFilesRequest{}
 	resp, err := service.ListFiles(req)
 
 	if err != nil {
@@ -863,7 +861,7 @@ func TestListFiles_LineCounts(t *testing.T) {
 	// This field is not exported, but for testing purposes, we are aware of its existence and meaning.
 	// If the internal field name changes, this test would need an update.
 	// A better way might be to use a known config value that translates to this, e.g. testConfig.MaxFileSizeMB * 1024 * 1024
-	maxSizeForLineCountThreshold := service.maxFileSize // MODIFIED
+	maxSizeForLineCountThreshold := service.maxFileSize
 
 	// Define file contents
 	emptyContent := ""
@@ -873,10 +871,10 @@ func TestListFiles_LineCounts(t *testing.T) {
 	unreadableContent := "cannot read this"
 
 	// Mock ListDir entries
-	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{ // MODIFIED
+	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{
 		mockDirEntryInfo{name: "empty.txt", size: int64(len(emptyContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
 		mockDirEntryInfo{name: "normal.txt", size: int64(len(normalContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
-		mockDirEntryInfo{name: "toolarge.txt", size: maxSizeForLineCountThreshold + 1, modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(), // MODIFIED
+		mockDirEntryInfo{name: "toolarge.txt", size: maxSizeForLineCountThreshold + 1, modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
 		mockDirEntryInfo{name: "invalidutf8.txt", size: int64(len(invalidUTF8ContentBytes)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
 		mockDirEntryInfo{name: "unreadable_content.txt", size: int64(len(unreadableContent)), modTime: now, isDir: false, mode: 0o644, isHidden: false}.toDirEntryInfo(),
 	}
@@ -895,17 +893,17 @@ func TestListFiles_LineCounts(t *testing.T) {
 	mockFs.files[pathUnreadable] = []byte(unreadableContent)
 
 	// Mock stats (especially for toolarge.txt)
-	mockFs.stats[pathEmpty] = &filesystem.FileStats{Size: int64(len(emptyContent)), ModTime: now, IsDir: false, Mode: 0o644}                  // MODIFIED: Name field removed
-	mockFs.stats[pathNormal] = &filesystem.FileStats{Size: int64(len(normalContent)), ModTime: now, IsDir: false, Mode: 0o644}                // MODIFIED: Name field removed
-	mockFs.stats[pathTooLarge] = &filesystem.FileStats{Size: maxSizeForLineCountThreshold + 1, ModTime: now, IsDir: false, Mode: 0o644}       // MODIFIED: Name field removed and used threshold
-	mockFs.stats[pathInvalidUTF8] = &filesystem.FileStats{Size: int64(len(invalidUTF8ContentBytes)), ModTime: now, IsDir: false, Mode: 0o644} // MODIFIED: Name field removed
-	mockFs.stats[pathUnreadable] = &filesystem.FileStats{Size: int64(len(unreadableContent)), ModTime: now, IsDir: false, Mode: 0o644}        // MODIFIED: Name field removed
+	mockFs.stats[pathEmpty] = &filesystem.FileStats{Size: int64(len(emptyContent)), ModTime: now, IsDir: false, Mode: 0o644}
+	mockFs.stats[pathNormal] = &filesystem.FileStats{Size: int64(len(normalContent)), ModTime: now, IsDir: false, Mode: 0o644}
+	mockFs.stats[pathTooLarge] = &filesystem.FileStats{Size: maxSizeForLineCountThreshold + 1, ModTime: now, IsDir: false, Mode: 0o644}
+	mockFs.stats[pathInvalidUTF8] = &filesystem.FileStats{Size: int64(len(invalidUTF8ContentBytes)), ModTime: now, IsDir: false, Mode: 0o644}
+	mockFs.stats[pathUnreadable] = &filesystem.FileStats{Size: int64(len(unreadableContent)), ModTime: now, IsDir: false, Mode: 0o644}
 
 	// Mock specific behaviors
 	mockFs.readFileErrorForPath[pathUnreadable] = fmt.Errorf("mock error reading unreadable_content.txt")
 	mockFs.isInvalidUTF8Content[string(invalidUTF8ContentBytes)] = true
 
-	req := models.ListFilesRequest{} // MODIFIED: Path field removed
+	req := models.ListFilesRequest{}
 	resp, err := service.ListFiles(req)
 
 	if err != nil {
@@ -939,7 +937,7 @@ func TestListFiles_LineCounts(t *testing.T) {
 			t.Errorf("Expected file %s in results, but not found", name)
 			continue
 		}
-		if fileInfo.Lines != expectedLineCount { // MODIFIED: Removed int64 cast
+		if fileInfo.Lines != expectedLineCount {
 			t.Errorf("File %s: expected %d lines, got %d lines", name, expectedLineCount, fileInfo.Lines)
 		}
 	}

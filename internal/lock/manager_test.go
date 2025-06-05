@@ -316,13 +316,11 @@ func TestLockManager_AcquireReleaseStress(t *testing.T) {
 				filename := files[(goroutineID+j)%len(files)] // Cycle through files
 
 				// For stress test, make timeout slightly random to vary contention
-				// #nosec G404 -- fine for test
 				lockAttemptTimeout := time.Duration(rand.Intn(50)+80) * time.Millisecond
 
 				err := lm.AcquireLock(filename, lockAttemptTimeout)
 				if err == nil {
 					// Simulate some work
-					// #nosec G404 -- fine for test
 					time.Sleep(time.Duration(rand.Intn(10)+1) * time.Millisecond)
 
 					releaseErr := lm.ReleaseLock(filename)
