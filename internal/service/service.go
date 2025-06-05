@@ -364,7 +364,13 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 	if lockErr != nil {
 		return nil, errors.NewOperationLockFailedError(req.Name, "edit", lockErr.Error())
 	}
-	defer s.lockManager.ReleaseLock(req.Name)
+	defer func() {
+		if err := s.lockManager.ReleaseLock(req.Name); err != nil {
+			// Using fmt.Printf as 'log' package is not imported in this file.
+			// In a real application, a consistent logging strategy would be used.
+			fmt.Printf("Error releasing lock for file '%s' in defer: %v\n", req.Name, err)
+		}
+	}()
 
 	var lines []string
 	var fileCreated bool
@@ -484,9 +490,9 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 
 	if req.Append != "" {
 		appendLines := s.fsAdapter.SplitLines([]byte(req.Append))
-		if len(appendLines) == 1 && appendLines[0] == "" && req.Append != "" && req.Append != "\n" {
-		} else if len(appendLines) == 0 && req.Append != "" {
-		}
+		// The empty "if" branch that was here previously (SA9003) has been removed.
+		// The append operation will now always apply if req.Append is not empty,
+		// which seems to be the original intent after removing prior empty conditional branches.
 		lines = append(lines, appendLines...)
 	}
 

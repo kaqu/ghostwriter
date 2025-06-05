@@ -179,7 +179,8 @@ func TestLockManager_MaxConcurrentOps(t *testing.T) {
 
 	// Cleanup
 	for i := 1; i < maxOps+1; i++ { // files[1], files[2], files[3] (which is files[maxOps])
-		lm.ReleaseLock(files[i])
+		// Explicitly ignore errors in test cleanup for this specific case as per lint error.
+		_ = lm.ReleaseLock(files[i])
 	}
 }
 
@@ -329,10 +330,11 @@ func TestLockManager_AcquireReleaseStress(t *testing.T) {
 						// This is a critical error in a stress test
 						t.Errorf("Goroutine %d: Failed to release lock for %s: %v", goroutineID, filename, releaseErr)
 					}
-				} else {
-					// Timeouts are acceptable under heavy stress, so just log them
-					// t.Logf("Goroutine %d: Failed to acquire lock for %s (timeout: %v): %v", goroutineID, filename, lockAttemptTimeout, err)
 				}
+				// The 'else' block for 'err != nil' (lock acquisition failure) was removed
+				// as it only contained a commented-out log line, addressing SA9003.
+				// Timeouts during stress tests are generally expected and don't need explicit logging
+				// in this part of the test unless specific timeout behaviors are being debugged.
 			}
 		}(i)
 	}

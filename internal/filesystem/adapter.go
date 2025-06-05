@@ -70,11 +70,10 @@ func CheckDirectoryIsWritable(path string) error {
 		return fmt.Errorf("error creating temporary file in %s: %w", path, err)
 	}
 	_ = file.Close()
-	errRemove := os.Remove(tmpFilePath)
-	if errRemove != nil {
-		// Log or handle this warning if necessary, but main check passed
-		// For example: log.Printf("Warning: failed to remove temporary test file %s: %v", tmpFilePath, errRemove)
-	}
+	// Attempt to remove the temporary file. The error is ignored as the primary purpose
+	// of this function is the writability check, which passed if we reached here.
+	// This addresses staticcheck SA9003 for an empty branch.
+	_ = os.Remove(tmpFilePath)
 	return nil
 }
 
