@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - '*'
-  create:
     tags:
       - 'v*' # Trigger on tags like v1.0, v0.1.0, etc.
 
