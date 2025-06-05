@@ -281,7 +281,9 @@ func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 			return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/testdir"}, nil
 		},
 	}
-	handler := NewHTTPHandler(mockService, 0)
+	// Use 1MB as a reasonable default for max request size in this test, instead of 0.
+	// 0MB would cause all requests, even empty JSON, to be "Payload Too Large" (413).
+	handler := NewHTTPHandler(mockService, 1)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
@@ -350,5 +352,46 @@ func TestHTTPHandler_handleReadFile_DisallowUnknownFields(t *testing.T) {
 		// The exact message from json.Decoder.DisallowUnknownFields can vary slightly.
 		// It might be in Error.Message or Error.Data.details depending on how NewParseError structures it.
 		t.Errorf("expected 'unknown field' in error message, got: %s / Data: %+v", errResp.Error.Message, errResp.Error.Data)
+	}
+}
+
+func TestNewHTTPHandler_MaxRequestSizeConfiguration(t *testing.T) {
+	testCases := []struct {
+		name         string
+		cfgMaxReqMB  int
+		expectedSize int64
+	}{
+		{
+			name:         "Typical value 10MB",
+			cfgMaxReqMB:  10,
+			expectedSize: 10 * 1024 * 1024,
+		},
+		{
+			name:         "Minimum value 1MB",
+			cfgMaxReqMB:  1,
+			expectedSize: 1 * 1024 * 1024,
+		},
+		{
+			name:         "Maximum value 100MB",
+			cfgMaxReqMB:  100,
+			expectedSize: 100 * 1024 * 1024,
+		},
+		{
+			name:         "Zero value 0MB", // Test edge case, though practical minimum might be 1
+			cfgMaxReqMB:  0,
+			expectedSize: 0 * 1024 * 1024,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Pass nil for FileOperationService as it's not relevant for this specific test
+			handler := NewHTTPHandler(nil, tc.cfgMaxReqMB)
+
+			if handler.maxReqSize != tc.expectedSize {
+				t.Errorf("Expected maxReqSize to be %d bytes, but got %d bytes for %d MB input",
+					tc.expectedSize, handler.maxReqSize, tc.cfgMaxReqMB)
+			}
+		})
 	}
 }

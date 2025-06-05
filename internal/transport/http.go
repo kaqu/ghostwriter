@@ -18,8 +18,7 @@ import (
 const (
 	defaultReadTimeout  = 60 * time.Second
 	defaultWriteTimeout = 60 * time.Second
-	// Max request size as per spec 4.2.1 "Maximum request size MUST be enforced at 50MB"
-	defaultMaxRequestSizeMB = 50
+	// defaultMaxRequestSizeMB = 50 // Removed: Max request size will be configurable
 )
 
 // HTTPHandler handles HTTP requests for file operations.
@@ -32,9 +31,7 @@ type HTTPHandler struct {
 }
 
 // NewHTTPHandler creates a new HTTPHandler.
-// cfgMaxReqSizeMB is currently ignored in favor of a default 50MB as per spec.
-// If a separate config for HTTP request size is added, it can be used.
-func NewHTTPHandler(svc service.FileOperationService, _ /*cfgMaxReqSizeMB*/ int) *HTTPHandler {
+func NewHTTPHandler(svc service.FileOperationService, cfgMaxReqSizeMB int) *HTTPHandler {
 	if svc == nil {
 		// This should ideally not happen if dependencies are correctly injected.
 		// Consider panicking or returning an error if critical dependencies are nil.
@@ -44,7 +41,7 @@ func NewHTTPHandler(svc service.FileOperationService, _ /*cfgMaxReqSizeMB*/ int)
 		service:      svc,
 		readTimeout:  defaultReadTimeout,  // Sensible defaults, can be made configurable
 		writeTimeout: defaultWriteTimeout, // Sensible defaults, can be made configurable
-		maxReqSize:   int64(defaultMaxRequestSizeMB) * 1024 * 1024,
+		maxReqSize:   int64(cfgMaxReqSizeMB) * 1024 * 1024,
 		Server:       &http.Server{}, // Initialize the server field
 	}
 }
@@ -114,7 +111,7 @@ func (h *HTTPHandler) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		var jsonSyntaxError *json.SyntaxError
 		var jsonUnmarshalTypeError *json.UnmarshalTypeError
 		if err.Error() == "http: request body too large" {
-			errDetail := errors.NewInvalidRequestError(fmt.Sprintf("Request body exceeds maximum size of %dMB.", defaultMaxRequestSizeMB))
+			errDetail := errors.NewInvalidRequestError(fmt.Sprintf("Request body exceeds maximum size of %dMB.", h.maxReqSize/(1024*1024)))
 			writeJSONErrorResponse(w, http.StatusRequestEntityTooLarge, errDetail)
 		} else if stdErrors.As(err, &jsonSyntaxError) { // Use aliased stdErrors
 			msg := fmt.Sprintf("Invalid JSON syntax at offset %d: %s", jsonSyntaxError.Offset, jsonSyntaxError.Error())
@@ -168,7 +165,7 @@ func (h *HTTPHandler) handleEditFile(w http.ResponseWriter, r *http.Request) {
 		var jsonSyntaxError *json.SyntaxError
 		var jsonUnmarshalTypeError *json.UnmarshalTypeError
 		if err.Error() == "http: request body too large" {
-			errDetail := errors.NewInvalidRequestError(fmt.Sprintf("Request body exceeds maximum size of %dMB.", defaultMaxRequestSizeMB))
+			errDetail := errors.NewInvalidRequestError(fmt.Sprintf("Request body exceeds maximum size of %dMB.", h.maxReqSize/(1024*1024)))
 			writeJSONErrorResponse(w, http.StatusRequestEntityTooLarge, errDetail)
 		} else if stdErrors.As(err, &jsonSyntaxError) { // Use aliased stdErrors
 			msg := fmt.Sprintf("Invalid JSON syntax at offset %d: %s", jsonSyntaxError.Offset, jsonSyntaxError.Error())
