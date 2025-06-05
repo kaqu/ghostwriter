@@ -331,8 +331,6 @@ func MapErrorToHTTPStatus(errorCode int, errDetail *models.ErrorDetail) int {
 			}
 		}
 		return http.StatusInternalServerError // Or a more generic client error if appropriate
-	// case CodeFileTooLarge: // This case is now handled by checking type within CodeFileSystemError
-	// 	return http.StatusRequestEntityTooLarge
 	case CodeOperationLockFailed:
 		return http.StatusConflict // Or 503 Service Unavailable
 	default:

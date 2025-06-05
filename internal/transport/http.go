@@ -7,10 +7,10 @@ import (
 	"file-editor-server/internal/models"
 	"file-editor-server/internal/service"
 	"fmt"
-	"io" // Added for io.EOF and r.Body.Close
+	"io"
 	"log"
 	"net/http"
-	"strings" // Added for Content-Type check
+	"strings"
 	"time"
 	// "strconv" // Not used yet, can remove if not needed later
 )
@@ -18,7 +18,6 @@ import (
 const (
 	defaultReadTimeout  = 60 * time.Second
 	defaultWriteTimeout = 60 * time.Second
-	// defaultMaxRequestSizeMB = 50 // Removed: Max request size will be configurable
 )
 
 // HTTPHandler handles HTTP requests for file operations.
@@ -51,7 +50,7 @@ func (h *HTTPHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/read_file", h.handleReadFile)
 	mux.HandleFunc("/edit_file", h.handleEditFile)
 	mux.HandleFunc("/health", h.handleHealthCheck)
-	mux.HandleFunc("/list_files", h.handleListFiles) // Added /list_files route
+	mux.HandleFunc("/list_files", h.handleListFiles)
 }
 
 // writeJSONResponse is a helper to write JSON data to the response.

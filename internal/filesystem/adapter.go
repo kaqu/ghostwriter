@@ -31,8 +31,8 @@ type FileSystemAdapter interface {
 	NormalizeNewlines(content []byte) []byte     // Converts \r\n and \r to \n
 	SplitLines(content []byte) []string          // Uses normalized newlines
 	JoinLinesWithNewlines(lines []string) []byte // Uses \n
-	EvalSymlinks(path string) (string, error)    // New method for symlink evaluation
-	ListDir(path string) ([]DirEntryInfo, error) // New method for listing directory contents
+	EvalSymlinks(path string) (string, error)
+	ListDir(path string) ([]DirEntryInfo, error)
 }
 
 // DirEntryInfo holds information about a directory entry.

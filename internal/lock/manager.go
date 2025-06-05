@@ -168,7 +168,6 @@ func (lm *LockManager) CleanupExpiredLocks() {
 					lm.currentLockCount--
 				}
 				lm.mu.Unlock()
-				// fmt.Printf("Cleaned up expired lock for %s\n", filename) // For debugging
 			}
 		}
 		return true

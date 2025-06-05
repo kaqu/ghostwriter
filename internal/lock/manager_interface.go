@@ -7,6 +7,4 @@ import "time"
 type LockManagerInterface interface {
 	AcquireLock(filename string, timeout time.Duration) error
 	ReleaseLock(filename string) error
-	// GetCurrentLockCount() int // Primarily for testing or metrics, not core ops usually
-	// CleanupExpiredLocks()   // Typically run by a background process
 }

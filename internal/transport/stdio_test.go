@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"file-editor-server/internal/errors"
 	"file-editor-server/internal/models"
-	"fmt" // Added fmt import
-	// service_mock "file-editor-server/internal/service/mocks" // Using the same mock as http_test
+	"fmt"
 	"strings"
 	"testing"
-	// "github.com/stretchr/testify/assert" // Using standard library for assertions
-	// "github.com/stretchr/testify/mock"   // Using manual mock
 )
 
 // Using the same mockFileOperationService from http_test.go for consistency.
@@ -21,7 +18,7 @@ import (
 type mockStdioFileOperationService struct {
 	ReadFileFunc  func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
 	EditFileFunc  func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
-	ListFilesFunc func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) // Added
+	ListFilesFunc func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail)
 }
 
 func (m *mockStdioFileOperationService) ReadFile(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
