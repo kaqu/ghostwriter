@@ -7,7 +7,7 @@ import (
 	"file-editor-server/internal/lock"
 	"file-editor-server/internal/service"
 	"file-editor-server/internal/transport"
-	"fmt"
+	// "fmt" // Removed as it's unused
 	"log"
 	"math"      // Added import
 	"net/http" // Required for http.Server in graceful shutdown
@@ -149,7 +149,7 @@ func main() {
 		// Add a small buffer to the overall shutdown timeout for cleanup tasks
 		// totalShutdownDeadline := time.Now().Add(shutdownTimeout + 2*time.Second)
 
-		shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second
+		// shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second // This is the redundant declaration
 
 		if cfg.Transport == "http" && httpServer != nil {
 			log.Println("Attempting to gracefully shut down HTTP server...")

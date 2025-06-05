@@ -19,8 +19,9 @@ import (
 // Let's assume it's simple enough to redefine for clarity here, or use a shared mock later.
 
 type mockStdioFileOperationService struct {
-	ReadFileFunc func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
-	EditFileFunc func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
+	ReadFileFunc  func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
+	EditFileFunc  func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
+	ListFilesFunc func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) // Added
 }
 
 func (m *mockStdioFileOperationService) ReadFile(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
@@ -35,6 +36,15 @@ func (m *mockStdioFileOperationService) EditFile(req models.EditFileRequest) (*m
 		return m.EditFileFunc(req)
 	}
 	return nil, errors.NewInternalError("EditFileFunc not implemented in mock")
+}
+
+// ListFiles implements the FileOperationService interface for the mock.
+func (m *mockStdioFileOperationService) ListFiles(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) {
+	if m.ListFilesFunc != nil {
+		return m.ListFilesFunc(req)
+	}
+	// Provide a default mock response that's valid but minimal.
+	return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/mock/stdio/dir"}, nil
 }
 
 

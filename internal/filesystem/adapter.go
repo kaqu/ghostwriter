@@ -113,32 +113,50 @@ func (fs *DefaultFileSystemAdapter) IsValidUTF8(content []byte) bool {
 // WriteFileBytesAtomic writes content to a file atomically.
 // It writes to a temporary file first with 0600 perm, then renames it to the target file,
 // and finally sets the desired permissions on the target file.
-func (fs *DefaultFileSystemAdapter) WriteFileBytesAtomic(filePath string, content []byte, perm os.FileMode) error {
+func (fs *DefaultFileSystemAdapter) WriteFileBytesAtomic(filePath string, content []byte, finalPerm os.FileMode) error {
 	dir := filepath.Dir(filePath)
-	// #nosec G404 -- rand is okay for temp file names, not security critical here
-	tmpFileName := fmt.Sprintf("%s.tmp.%d.%d", filepath.Base(filePath), time.Now().UnixNano(), rand.Intn(100000))
-	tmpFilePath := filepath.Join(dir, tmpFileName)
 
-	// 1. Write to the temporary file with 0600 permissions.
-	if err := os.WriteFile(tmpFilePath, content, 0600); err != nil {
-		return fmt.Errorf("failed to write to temporary file %s with 0600 permissions: %w", tmpFilePath, err)
+	// 1. Create a temporary file. os.CreateTemp creates files with 0600 permissions on Unix-like systems.
+	// The pattern argument includes a "*" which will be replaced by a random string.
+	tempFile, err := os.CreateTemp(dir, filepath.Base(filePath)+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file in %s: %w", dir, err)
+	}
+	// Defer removal of the temporary file in case of errors before rename.
+	// If rename succeeds, this Remove will fail harmlessly (as file no longer exists at tempFile.Name()).
+	defer os.Remove(tempFile.Name())
+
+	// Although os.CreateTemp typically uses 0600, an explicit Chmod can be used
+	// for guarantee if desired, but it's often redundant on POSIX systems.
+	// For this exercise, we'll trust os.CreateTemp's default 0600 permission for the temp file.
+	// If an explicit chmod was required here, it would be:
+	// if errChmod := os.Chmod(tempFile.Name(), 0600); errChmod != nil {
+	// 	 tempFile.Close() // Close before returning due to chmod error
+	// 	 return fmt.Errorf("failed to chmod temporary file %s to 0600: %w", tempFile.Name(), errChmod)
+	// }
+
+	// 2. Write content to the temporary file.
+	if _, errWrite := tempFile.Write(content); errWrite != nil {
+		tempFile.Close() // Attempt to close before returning
+		return fmt.Errorf("failed to write to temporary file %s: %w", tempFile.Name(), errWrite)
 	}
 
-	// 2. Atomically replace the original file with the temporary file.
-	if err := os.Rename(tmpFilePath, filePath); err != nil {
-		// Attempt to clean up temp file on rename failure
-		if removeErr := os.Remove(tmpFilePath); removeErr != nil {
-			// Log or handle compound error: rename failed AND temp removal failed
-			// For now, primary error is rename error.
-			// Example: log.Printf("Warning: failed to remove temp file %s after rename error: %v", tmpFilePath, removeErr)
-		}
-		return fmt.Errorf("failed to rename temporary file %s to %s: %w", tmpFilePath, filePath, err)
+	// 3. Close the temporary file.
+	if errClose := tempFile.Close(); errClose != nil {
+		return fmt.Errorf("failed to close temporary file %s: %w", tempFile.Name(), errClose)
 	}
 
-	// 3. Set the final permissions on the destination file.
-	if err := os.Chmod(filePath, perm); err != nil {
-		// The file is in place, but permissions might not be as expected.
-		return fmt.Errorf("file written to %s, but failed to set final permissions to %o: %w", filePath, perm, err)
+	// 4. Atomically replace the original file with the temporary file.
+	if errRename := os.Rename(tempFile.Name(), filePath); errRename != nil {
+		// If rename fails, tempFile should have already been scheduled for removal by defer.
+		return fmt.Errorf("failed to rename temporary file %s to %s: %w", tempFile.Name(), filePath, errRename)
+	}
+
+	// 5. Set the final permissions on the destination file.
+	// This is important because os.Rename might preserve permissions of an existing filePath,
+	// or use default permissions if filePath is newly created by the rename (which can be influenced by tempFile's perms or umask).
+	if errChmodFinal := os.Chmod(filePath, finalPerm); errChmodFinal != nil {
+		return fmt.Errorf("file written to %s, but failed to set final permissions to %o: %w", filePath, finalPerm, errChmodFinal)
 	}
 
 	return nil
