@@ -2,7 +2,9 @@ package config
 
 import (
 	"flag"
+	"file-editor-server/internal/filesystem"
 	"fmt"
+	"net"
 	"os"
 )
 
@@ -48,25 +50,28 @@ func (c *Config) Validate() error {
 	if !info.IsDir() {
 		return fmt.Errorf("working directory is not a directory: %s", c.WorkingDirectory)
 	}
-	// Minimal check for writability (Unix-like systems).
-	// A more robust check might involve trying to create a temporary file.
-	if info.Mode().Perm()&(1<<(uint(7))) == 0 { // Check for write permission for others
-		// Fallback to check user write permission if group/other don't have it.
-		// This is a simplified check. True writability can be complex.
-		if os.Geteuid() == 0 { // root user
-			// root can often write even if permissions say otherwise
-		} else if info.Mode().Perm()&(1<<(uint(8))) == 0 { // Check for write permission for user
-			return fmt.Errorf("working directory is not writable: %s", c.WorkingDirectory)
-		}
+	// Use the new robust writability check
+	if err := filesystem.CheckDirectoryIsWritable(c.WorkingDirectory); err != nil {
+		return fmt.Errorf("working directory is not writable: %s: %w", c.WorkingDirectory, err)
 	}
-
 
 	if c.Transport != "http" && c.Transport != "stdio" {
 		return fmt.Errorf("transport must be 'http' or 'stdio'")
 	}
 
-	if c.Port < 1024 || c.Port > 65535 {
-		return fmt.Errorf("port must be between 1024 and 65535")
+	if c.Transport == "http" {
+		if c.Port < 1024 || c.Port > 65535 {
+			return fmt.Errorf("port must be between 1024 and 65535")
+		}
+		// Check if port is available
+		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", c.Port))
+		if err != nil {
+			return fmt.Errorf("HTTP port %d is not available: %w", c.Port, err)
+		}
+		if err := listener.Close(); err != nil {
+			// Log this minor error if necessary, but port was available
+			// For example: fmt.Fprintf(os.Stderr, "Warning: could not close test listener for port %d: %v\n", c.Port, err)
+		}
 	}
 
 	if c.MaxFileSizeMB < 1 || c.MaxFileSizeMB > 100 {

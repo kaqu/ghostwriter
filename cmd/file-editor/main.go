@@ -52,12 +52,33 @@ func main() {
 	// Goroutine to start the selected transport
 	serverDoneChan := make(chan error, 1) // To signal when server stops
 
+	// --- Periodic Lock Cleanup ---
+	const lockCleanupInterval = 5 * time.Minute
+	lockCleanupStopChan := make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(lockCleanupInterval)
+		defer ticker.Stop()
+		log.Println("Starting periodic lock cleanup routine.")
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("Running expired lock cleanup...")
+				lockManager.CleanupExpiredLocks() // Assuming lockManager is accessible here
+			case <-lockCleanupStopChan:
+				log.Println("Stopping periodic lock cleanup routine.")
+				return
+			}
+		}
+	}()
+
 	// 6. Initialize and Start Transport
 	if cfg.Transport == "http" {
 		log.Printf("Initializing HTTP transport on port %d...\n", cfg.Port)
 		// Note: MaxFileSizeMB is a placeholder for the second arg of NewHTTPHandler,
 		// as it currently uses a hardcoded 50MB for HTTP request size.
 		httpHandler := transport.NewHTTPHandler(fileService, cfg.MaxFileSizeMB)
+		httpServer = httpHandler.Server // Get the server instance from the handler
 
 		// httpHandler.StartServer will be modified to return the *http.Server instance
 		// or StartServer itself will run in a goroutine and pass the server instance back.
@@ -88,10 +109,14 @@ func main() {
 			// We will call a conceptual `httpHandler.GetHTTPServer()` if it existed.
 			// For now, StartServer is blocking.
 			log.Printf("Starting HTTP server...")
-			if err := httpHandler.StartServer(cfg.Port, cfg.OperationTimeoutSec, cfg.OperationTimeoutSec); err != nil && err != http.ErrServerClosed {
+			err := httpHandler.StartServer(cfg.Port, cfg.OperationTimeoutSec, cfg.OperationTimeoutSec)
+			if err != nil && err != http.ErrServerClosed {
 				log.Printf("HTTP server error: %v\n", err)
 				serverDoneChan <- err
 			} else {
+				// If err is http.ErrServerClosed, it means graceful shutdown happened.
+				// If err is nil (though StartServer is documented to always return non-nil), also normal.
+				log.Println("HTTP server finished.")
 				serverDoneChan <- nil
 			}
 		}()
@@ -116,28 +141,25 @@ func main() {
 	select {
 	case sig := <-shutdownChan:
 		log.Printf("Shutdown signal received: %s. Initiating graceful shutdown...\n", sig)
+		close(lockCleanupStopChan) // Signal lock cleanup goroutine to stop
 
 		// --- Graceful Shutdown Logic ---
 		shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second
 		// Add a small buffer to the overall shutdown timeout for cleanup tasks
 		// totalShutdownDeadline := time.Now().Add(shutdownTimeout + 2*time.Second)
 
+		shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second
 
-		if cfg.Transport == "http" {
-			// This is where you would ideally call httpServer.Shutdown(ctx)
-			// Since we don't have direct access to httpServer from transport.StartServer
-			// without refactoring transport.StartServer, we'll simulate.
-			// In a real scenario:
-			// ctx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
-			// defer cancelShutdown()
-			// if err := httpServer.Shutdown(ctx); err != nil {
-			//     log.Printf("HTTP server graceful shutdown error: %v\n", err)
-			// } else {
-			//     log.Println("HTTP server gracefully stopped.")
-			// }
-			log.Println("HTTP transport: Graceful shutdown initiated (conceptual - requires server.Shutdown).")
-			// To actually stop it, we might need to os.Exit or ensure StartServer respects a context.
-			// For now, the signal will lead to os.Exit below.
+		if cfg.Transport == "http" && httpServer != nil {
+			log.Println("Attempting to gracefully shut down HTTP server...")
+			ctx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancelShutdown() // Ensure context is cancelled to free resources
+
+			if err := httpServer.Shutdown(ctx); err != nil {
+				log.Printf("HTTP server graceful shutdown error: %v\n", err)
+			} else {
+				log.Println("HTTP server gracefully stopped.")
+			}
 		} else if cfg.Transport == "stdio" {
 			// Stdio handler typically stops when stdin is closed.
 			// Closing os.Stdin here is tricky and might not be the right way.
@@ -161,9 +183,11 @@ func main() {
 	case err := <-serverDoneChan:
 		if err != nil {
 			log.Printf("Server/handler stopped due to error: %v\n", err)
-			os.Exit(1) // Exit with error if server failed
+			close(lockCleanupStopChan) // Also stop cleanup if server fails
+			os.Exit(1)                 // Exit with error if server failed
 		}
 		log.Println("Server/handler stopped normally.")
+		close(lockCleanupStopChan) // Also stop cleanup if server stops normally
 	}
 
 	log.Println("Application shutting down.")

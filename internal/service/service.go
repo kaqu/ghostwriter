@@ -6,6 +6,7 @@ import (
 	"file-editor-server/internal/filesystem"
 	"file-editor-server/internal/lock"
 	"file-editor-server/internal/models"
+	stdErrors "errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -19,6 +20,7 @@ import (
 const (
 	defaultMaxLineCount = 100000 // Default max line count if not specified in config (though config has a default)
 	defaultMaxFilenameLength = 255
+	maxEditsAllowed     = 1000
 )
 
 // FileOperationService defines the interface for file operations.
@@ -93,13 +95,16 @@ func NewDefaultFileOperationService(
 }
 
 func (s *DefaultFileOperationService) resolveAndValidatePath(filename string) (string, *models.ErrorDetail) {
+	// Note: 'filename' here is the raw input, which is suitable for 'filename' field in error details.
+	// 'operation' is 'path_resolution' for these validation errors.
 	if !s.filenameRegex.MatchString(filename) {
-		return "", errors.NewInvalidParamsError("Filename contains invalid characters.", map[string]interface{}{"filename": filename})
+		return "", errors.NewInvalidParamsError("Filename contains invalid characters.", map[string]interface{}{"filename": filename}, filename, "path_resolution")
 	}
 	if len(filename) == 0 || len(filename) > defaultMaxFilenameLength {
 		return "", errors.NewInvalidParamsError(
 			fmt.Sprintf("Filename length must be between 1 and %d characters.", defaultMaxFilenameLength),
 			map[string]interface{}{"filename": filename, "length": fmt.Sprintf("%d", len(filename))},
+			filename, "path_resolution",
 		)
 	}
 
@@ -108,14 +113,17 @@ func (s *DefaultFileOperationService) resolveAndValidatePath(filename string) (s
 
 	// Path traversal check
 	if !strings.HasPrefix(cleanedPath, s.workingDir) {
-		return "", errors.NewInvalidParamsError("Path traversal attempt detected.", map[string]interface{}{"filename": filename})
+		return "", errors.NewInvalidParamsError("Path traversal attempt detected.", map[string]interface{}{"filename": filename}, filename, "path_resolution")
 	}
 	rel, err := filepath.Rel(s.workingDir, cleanedPath)
 	if err != nil {
-		return "", errors.NewInternalError(fmt.Sprintf("Error creating relative path: %v", err))
+		// This is an internal server error, not an invalid parameter from the user.
+		return "", errors.NewInternalError(fmt.Sprintf("Error creating relative path for '%s': %v", filename, err))
 	}
 	if strings.HasPrefix(rel, "..") {
-		return "", errors.NewInvalidParamsError("Path traversal attempt detected (relative path).", map[string]interface{}{"filename": filename})
+		// This case indicates that even after joining with workingDir and cleaning,
+		// the path tries to go "up" from workingDir. This is a traversal attempt.
+		return "", errors.NewInvalidParamsError("Path traversal attempt detected (relative path).", map[string]interface{}{"filename": filename}, filename, "path_resolution")
 	}
 
 	return cleanedPath, nil
@@ -129,15 +137,25 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*mod
 		return nil, errDetail
 	}
 
+	// Operation for these validation errors is "read_validation"
 	if (req.StartLine != 0 && req.StartLine < 1) || (req.EndLine != 0 && req.EndLine < 1) {
-		return nil, errors.NewInvalidParamsError("Line numbers must be 1 or greater if specified.", map[string]interface{}{"start_line": req.StartLine, "end_line": req.EndLine})
+		return nil, errors.NewInvalidParamsError("Line numbers must be 1 or greater if specified.", map[string]interface{}{"start_line": req.StartLine, "end_line": req.EndLine}, req.Name, "read_validation")
 	}
 	if req.StartLine > 0 && req.EndLine > 0 && req.StartLine > req.EndLine {
-		return nil, errors.NewInvalidParamsError("start_line cannot be greater than end_line.", map[string]interface{}{"start_line": req.StartLine, "end_line": req.EndLine})
+		return nil, errors.NewInvalidParamsError("start_line cannot be greater than end_line.", map[string]interface{}{"start_line": req.StartLine, "end_line": req.EndLine}, req.Name, "read_validation")
 	}
 
 	exists, err := s.fsAdapter.FileExists(filePath)
 	if err != nil {
+		// Try to unwrap the error to check for specific types like permission errors.
+		underlyingErr := err
+		// Loop to unwrap multiple layers if necessary, though os.IsPermission should handle it.
+		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+			underlyingErr = unwrapped
+		}
+		if os.IsPermission(underlyingErr) {
+			return nil, errors.NewPermissionDeniedError(req.Name, "check_exists")
+		}
 		return nil, errors.NewFileSystemError(req.Name, "check_exists", fmt.Sprintf("Error checking file existence: %v", err))
 	}
 	if !exists {
@@ -146,22 +164,36 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*mod
 
 	stats, err := s.fsAdapter.GetFileStats(filePath)
 	if err != nil {
+		underlyingErr := err
+		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+			underlyingErr = unwrapped
+		}
+		if os.IsPermission(underlyingErr) {
+			return nil, errors.NewPermissionDeniedError(req.Name, "get_stats")
+		}
 		return nil, errors.NewFileSystemError(req.Name, "get_stats", fmt.Sprintf("Error getting file stats: %v", err))
 	}
 	if stats.IsDir {
-		return nil, errors.NewInvalidParamsError(fmt.Sprintf("Path '%s' is a directory, not a file.", req.Name), map[string]interface{}{"filename": req.Name})
+		return nil, errors.NewInvalidParamsError(fmt.Sprintf("Path '%s' is a directory, not a file.", req.Name), map[string]interface{}{"filename": req.Name}, req.Name, "read_validation")
 	}
 	if stats.Size > s.maxFileSize {
-		return nil, errors.NewFileTooLargeError(req.Name, int(s.maxFileSize/(1024*1024)))
+		return nil, errors.NewFileTooLargeError(req.Name, "read", stats.Size, int(s.maxFileSize/(1024*1024)))
 	}
 
 	fileContent, err := s.fsAdapter.ReadFileBytes(filePath)
 	if err != nil {
+		underlyingErr := err
+		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+			underlyingErr = unwrapped
+		}
+		if os.IsPermission(underlyingErr) {
+			return nil, errors.NewPermissionDeniedError(req.Name, "read_bytes")
+		}
 		return nil, errors.NewFileSystemError(req.Name, "read_bytes", fmt.Sprintf("Error reading file content: %v", err))
 	}
 
 	if !s.fsAdapter.IsValidUTF8(fileContent) {
-		return nil, errors.NewInvalidParamsError("File contains invalid UTF-8 encoding.", map[string]interface{}{"filename": req.Name})
+		return nil, errors.NewInvalidEncodingError(req.Name, "read", "File content is not valid UTF-8")
 	}
 
 	lines := s.fsAdapter.SplitLines(fileContent)
@@ -169,7 +201,7 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*mod
 
 	if totalLineCount > s.maxLineCount {
 		return nil, errors.NewInvalidParamsError(fmt.Sprintf("File exceeds maximum line count of %d.", s.maxLineCount),
-			map[string]interface{}{"filename": req.Name, "line_count": totalLineCount, "max_line_count": s.maxLineCount})
+			map[string]interface{}{"filename": req.Name, "line_count": totalLineCount, "max_line_count": s.maxLineCount}, req.Name, "read_validation")
 	}
 
 	startLine := req.StartLine
@@ -188,12 +220,14 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (*mod
 		return nil, errors.NewInvalidParamsError(
 			fmt.Sprintf("start_line %d is greater than total lines %d.", startLine, totalLineCount),
 			map[string]interface{}{"filename": req.Name, "start_line": startLine, "total_lines": totalLineCount},
+			req.Name, "read_validation",
 		)
 	}
     if totalLineCount == 0 && startLine > 1 {
         return nil, errors.NewInvalidParamsError(
 			fmt.Sprintf("start_line %d is invalid for an empty file.", startLine),
 			map[string]interface{}{"filename": req.Name, "start_line": startLine, "total_lines": totalLineCount},
+			req.Name, "read_validation",
 		)
     }
      if totalLineCount == 0 && startLine == 1 {
@@ -254,29 +288,38 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 		return nil, errDetail
 	}
 
+	if len(req.Edits) > maxEditsAllowed {
+		return nil, errors.NewInvalidParamsError(
+			fmt.Sprintf("Number of edits exceeds maximum allowed of %d.", maxEditsAllowed),
+			map[string]interface{}{"num_edits": len(req.Edits), "max_edits": maxEditsAllowed},
+			req.Name, "edit_validation",
+		)
+	}
+
+	// Operation for these validation errors is "edit_validation"
 	for i, edit := range req.Edits {
 		if edit.Line < 1 {
 			return nil, errors.NewInvalidParamsError(fmt.Sprintf("Edit operation #%d: line number must be 1 or greater.", i+1),
-				map[string]interface{}{"edit_index": i, "line": edit.Line})
+				map[string]interface{}{"edit_index": i, "line": edit.Line}, req.Name, "edit_validation")
 		}
 		op := strings.ToLower(edit.Operation)
 		if op != "replace" && op != "insert" && op != "delete" {
 			return nil, errors.NewInvalidParamsError(fmt.Sprintf("Edit operation #%d: invalid operation '%s'. Must be 'replace', 'insert', or 'delete'.", i+1, edit.Operation),
-				map[string]interface{}{"edit_index": i, "operation": edit.Operation})
+				map[string]interface{}{"edit_index": i, "operation": edit.Operation}, req.Name, "edit_validation")
 		}
 		req.Edits[i].Operation = op
 
 		if op == "delete" && edit.Content != "" {
 			return nil, errors.NewInvalidParamsError(fmt.Sprintf("Edit operation #%d ('delete'): content must be empty.", i+1),
-				map[string]interface{}{"edit_index": i})
+				map[string]interface{}{"edit_index": i}, req.Name, "edit_validation")
 		}
 		if (op == "insert" || op == "replace") && !utf8.ValidString(edit.Content) {
 			return nil, errors.NewInvalidParamsError(fmt.Sprintf("Edit operation #%d: content contains invalid UTF-8 encoding.", i+1),
-				map[string]interface{}{"edit_index": i})
+				map[string]interface{}{"edit_index": i}, req.Name, "edit_validation")
 		}
 	}
 	if req.Append != "" && !utf8.ValidString(req.Append) {
-		return nil, errors.NewInvalidParamsError("Append content contains invalid UTF-8 encoding.", nil)
+		return nil, errors.NewInvalidParamsError("Append content contains invalid UTF-8 encoding.", nil, req.Name, "edit_validation")
 	}
 
 	lockErr := s.lockManager.AcquireLock(req.Name, s.opTimeout)
@@ -291,27 +334,48 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 
 	fileExists, fsErr := s.fsAdapter.FileExists(filePath)
 	if fsErr != nil {
+		underlyingErr := fsErr
+		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+			underlyingErr = unwrapped
+		}
+		if os.IsPermission(underlyingErr) {
+			return nil, errors.NewPermissionDeniedError(req.Name, "check_exists_on_edit")
+		}
 		return nil, errors.NewFileSystemError(req.Name, "check_exists_on_edit", fmt.Sprintf("Error checking file existence: %v", fsErr))
 	}
 
 	if fileExists {
 		stats, statErr := s.fsAdapter.GetFileStats(filePath)
 		if statErr != nil {
+			underlyingErr := statErr
+			for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+				underlyingErr = unwrapped
+			}
+			if os.IsPermission(underlyingErr) {
+				return nil, errors.NewPermissionDeniedError(req.Name, "get_stats_on_edit")
+			}
 			return nil, errors.NewFileSystemError(req.Name, "get_stats_on_edit", fmt.Sprintf("Error getting file stats: %v", statErr))
 		}
 		if stats.IsDir {
-			return nil, errors.NewInvalidParamsError(fmt.Sprintf("Path '%s' is a directory, not a file.", req.Name), map[string]interface{}{"filename": req.Name})
+			return nil, errors.NewInvalidParamsError(fmt.Sprintf("Path '%s' is a directory, not a file.", req.Name), map[string]interface{}{"filename": req.Name}, req.Name, "edit_validation")
 		}
 		if stats.Size > s.maxFileSize {
-			return nil, errors.NewFileTooLargeError(req.Name, int(s.maxFileSize/(1024*1024)))
+			return nil, errors.NewFileTooLargeError(req.Name, "read_for_edit", stats.Size, int(s.maxFileSize/(1024*1024)))
 		}
 
 		fileContent, readErr := s.fsAdapter.ReadFileBytes(filePath)
 		if readErr != nil {
+			underlyingErr := readErr
+			for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+				underlyingErr = unwrapped
+			}
+			if os.IsPermission(underlyingErr) {
+				return nil, errors.NewPermissionDeniedError(req.Name, "read_bytes_on_edit")
+			}
 			return nil, errors.NewFileSystemError(req.Name, "read_bytes_on_edit", fmt.Sprintf("Error reading file content: %v", readErr))
 		}
 		if !s.fsAdapter.IsValidUTF8(fileContent) {
-			return nil, errors.NewInvalidParamsError("File contains invalid UTF-8 encoding.", map[string]interface{}{"filename": req.Name})
+			return nil, errors.NewInvalidEncodingError(req.Name, "read_for_edit", "File content is not valid UTF-8")
 		}
 		lines = s.fsAdapter.SplitLines(fileContent)
 		fileCreated = false
@@ -326,7 +390,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 
 	if !fileCreated && originalLineCount > s.maxLineCount {
 		return nil, errors.NewInvalidParamsError(fmt.Sprintf("File exceeds maximum line count of %d before edits.", s.maxLineCount),
-			map[string]interface{}{"filename": req.Name, "line_count": originalLineCount, "max_line_count": s.maxLineCount})
+			map[string]interface{}{"filename": req.Name, "line_count": originalLineCount, "max_line_count": s.maxLineCount}, req.Name, "edit_validation")
 	}
 
 	sortedEdits := make([]models.EditOperation, len(req.Edits))
@@ -347,7 +411,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 			if lineIndex < 0 || lineIndex >= currentLineCount {
 				return nil, errors.NewInvalidParamsError(
 					fmt.Sprintf("Edit 'replace': line %d is out of range (1-%d).", edit.Line, currentLineCount),
-					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount})
+					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			if lines[lineIndex] != edit.Content {
 				lines[lineIndex] = edit.Content
@@ -357,7 +421,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 			if lineIndex < 0 || lineIndex > currentLineCount {
 				return nil, errors.NewInvalidParamsError(
 					fmt.Sprintf("Edit 'insert': line %d is out of range (1-%d allow insert at %d).", edit.Line, currentLineCount, currentLineCount+1),
-					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount})
+					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			lines = append(lines[:lineIndex], append([]string{edit.Content}, lines[lineIndex:]...)...)
 			// opChangedLineCount = true
@@ -365,12 +429,12 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 			if currentLineCount == 0 {
 				return nil, errors.NewInvalidParamsError(
 					fmt.Sprintf("Edit 'delete': line %d is out of range, file is empty.", edit.Line),
-					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount})
+					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			if lineIndex < 0 || lineIndex >= currentLineCount {
 				return nil, errors.NewInvalidParamsError(
 					fmt.Sprintf("Edit 'delete': line %d is out of range (1-%d).", edit.Line, currentLineCount),
-					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount})
+					map[string]interface{}{"filename": req.Name, "line": edit.Line, "total_lines": currentLineCount}, req.Name, "edit_validation")
 			}
 			lines = append(lines[:lineIndex], lines[lineIndex+1:]...)
 			// opChangedLineCount = true
@@ -393,16 +457,23 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (*mod
 	if newTotalLines > s.maxLineCount {
 		return nil, errors.NewInvalidParamsError(
 			fmt.Sprintf("Edit results in file exceeding maximum line count of %d (new count: %d).", s.maxLineCount, newTotalLines),
-			map[string]interface{}{"filename": req.Name, "new_line_count": newTotalLines, "max_line_count": s.maxLineCount})
+			map[string]interface{}{"filename": req.Name, "new_line_count": newTotalLines, "max_line_count": s.maxLineCount}, req.Name, "edit_validation")
 	}
 
 	finalContentBytes := s.fsAdapter.JoinLinesWithNewlines(lines)
 	if int64(len(finalContentBytes)) > s.maxFileSize {
-		return nil, errors.NewFileTooLargeError(req.Name, int(s.maxFileSize/(1024*1024)))
+		return nil, errors.NewFileTooLargeError(req.Name, "edit_write", int64(len(finalContentBytes)), int(s.maxFileSize/(1024*1024)))
 	}
 
 	writeErr := s.fsAdapter.WriteFileBytesAtomic(filePath, finalContentBytes, 0644)
 	if writeErr != nil {
+		underlyingErr := writeErr
+		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
+			underlyingErr = unwrapped
+		}
+		if os.IsPermission(underlyingErr) {
+			return nil, errors.NewPermissionDeniedError(req.Name, "write_atomic")
+		}
 		return nil, errors.NewFileSystemError(req.Name, "write_atomic", fmt.Sprintf("Error writing file: %v", writeErr))
 	}
 

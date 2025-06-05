@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings" // Added for Content-Type check
 	"time"
 	// "strconv" // Not used yet, can remove if not needed later
 )
@@ -26,6 +27,7 @@ type HTTPHandler struct {
 	readTimeout  time.Duration // For http.Server
 	writeTimeout time.Duration // For http.Server
 	maxReqSize   int64         // Max request body size in bytes
+	Server       *http.Server  // Holds the server instance
 }
 
 // NewHTTPHandler creates a new HTTPHandler.
@@ -42,6 +44,7 @@ func NewHTTPHandler(svc service.FileOperationService, _ /*cfgMaxReqSizeMB*/ int)
 		readTimeout:  defaultReadTimeout,  // Sensible defaults, can be made configurable
 		writeTimeout: defaultWriteTimeout, // Sensible defaults, can be made configurable
 		maxReqSize:   int64(defaultMaxRequestSizeMB) * 1024 * 1024,
+		Server:       &http.Server{}, // Initialize the server field
 	}
 }
 
@@ -90,6 +93,13 @@ func (h *HTTPHandler) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	contentType := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/json") {
+		errDetail := errors.NewInvalidRequestError("Invalid Content-Type header. Must be 'application/json' or 'application/json; charset=utf-8'.")
+		writeJSONErrorResponse(w, http.StatusUnsupportedMediaType, errDetail)
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxReqSize)
 	defer r.Body.Close()
 
@@ -135,6 +145,13 @@ func (h *HTTPHandler) handleEditFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		errDetail := errors.NewInvalidRequestError(fmt.Sprintf("Method %s not allowed for /edit_file. Use POST.", r.Method))
 		writeJSONErrorResponse(w, http.StatusMethodNotAllowed, errDetail)
+		return
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/json") {
+		errDetail := errors.NewInvalidRequestError("Invalid Content-Type header. Must be 'application/json' or 'application/json; charset=utf-8'.")
+		writeJSONErrorResponse(w, http.StatusUnsupportedMediaType, errDetail)
 		return
 	}
 
@@ -192,18 +209,17 @@ func (h *HTTPHandler) StartServer(port int, readTimeoutSec int, writeTimeoutSec 
 		actualWriteTimeout = time.Duration(writeTimeoutSec) * time.Second
 	}
 
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      mux,
-		ReadTimeout:  actualReadTimeout,
-		WriteTimeout: actualWriteTimeout,
-		// IdleTimeout can also be set
-	}
+	// Configure the server instance stored in the handler
+	h.Server.Addr = fmt.Sprintf(":%d", port)
+	h.Server.Handler = mux
+	h.Server.ReadTimeout = actualReadTimeout
+	h.Server.WriteTimeout = actualWriteTimeout
+	// IdleTimeout can also be set if desired, e.g., h.Server.IdleTimeout = 120 * time.Second
 
 	log.Printf("HTTP server starting on port %d (ReadTimeout: %s, WriteTimeout: %s)", port, actualReadTimeout, actualWriteTimeout)
 	// ListenAndServe always returns a non-nil error.
 	// If it's http.ErrServerClosed, it's a graceful shutdown, not necessarily a "failure" to log as fatal.
-	err := server.ListenAndServe()
+	err := h.Server.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		log.Printf("HTTP server ListenAndServe error: %v", err)
 		return err
