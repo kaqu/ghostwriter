@@ -57,9 +57,10 @@ func main() {
 	switch cfg.Transport {
 	case "http":
 		log.Printf("Initializing HTTP transport on port %d...\n", cfg.Port)
-		// Note: MaxFileSizeMB is a placeholder for the second arg of NewHTTPHandler,
-		// as it currently uses a hardcoded 50MB for HTTP request size.
-		httpHandler := transport.NewHTTPHandler(fileService, cfg.MaxFileSizeMB)
+		// Initialize MCP processor for HTTP mode
+		mcpProcessor := mcp.NewMCPProcessor(fileService)
+		// Note: MaxFileSizeMB is a placeholder for the request size limit.
+		httpHandler := transport.NewHTTPHandler(fileService, mcpProcessor, cfg.MaxFileSizeMB)
 		httpServer = httpHandler.Server // Get the server instance from the handler
 
 		// httpHandler.StartServer will be modified to return the *http.Server instance
@@ -106,7 +107,7 @@ func main() {
 	case "stdio":
 		log.Println("Initializing STDIN/STDOUT JSON-RPC transport...")
 		go func() {
-			mcpProcessor := mcp.NewMCPProcessor(fileService) // Create MCPProcessor
+			mcpProcessor := mcp.NewMCPProcessor(fileService)        // Create MCPProcessor
 			stdioHandler := transport.NewStdioHandler(mcpProcessor) // Pass processor to StdioHandler
 			if err := stdioHandler.Start(os.Stdin, os.Stdout); err != nil {
 				log.Printf("STDIO handler error: %v\n", err)
@@ -159,7 +160,7 @@ func main() {
 		if err != nil {
 			log.Printf("Server/handler stopped due to error: %v\n", err)
 			// close(lockCleanupStopChan) // Removed: No longer needed
-			os.Exit(1)                 // Exit with error if server failed
+			os.Exit(1) // Exit with error if server failed
 		}
 		log.Println("Server/handler stopped normally.")
 		// close(lockCleanupStopChan) // Removed: No longer needed

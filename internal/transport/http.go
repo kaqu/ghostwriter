@@ -3,8 +3,6 @@ package transport
 import (
 	"encoding/json"
 	stdErrors "errors" // Alias for standard errors package
-	"encoding/json"
-	stdErrors "errors" // Alias for standard errors package
 	"file-editor-server/internal/errors"
 	"file-editor-server/internal/mcp" // Added for MCPProcessorInterface
 	"file-editor-server/internal/models"
@@ -29,8 +27,8 @@ type HTTPHandler struct {
 	mcpProcessor mcp.MCPProcessorInterface // Added MCPProcessor
 	readTimeout  time.Duration             // For http.Server
 	writeTimeout time.Duration             // For http.Server
-	maxReqSize   int64         // Max request body size in bytes
-	Server       *http.Server  // Holds the server instance
+	maxReqSize   int64                     // Max request body size in bytes
+	Server       *http.Server              // Holds the server instance
 }
 
 // NewHTTPHandler creates a new HTTPHandler.
@@ -45,7 +43,7 @@ func NewHTTPHandler(svc service.FileOperationService, mcpProcessor mcp.MCPProces
 	}
 	return &HTTPHandler{
 		service:      svc,
-		mcpProcessor: mcpProcessor, // Store the MCPProcessor
+		mcpProcessor: mcpProcessor,        // Store the MCPProcessor
 		readTimeout:  defaultReadTimeout,  // Sensible defaults, can be made configurable
 		writeTimeout: defaultWriteTimeout, // Sensible defaults, can be made configurable
 		maxReqSize:   int64(cfgMaxReqSizeMB) * 1024 * 1024,
@@ -200,23 +198,13 @@ func (h *HTTPHandler) handleEditFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename, linesModified, newTotalLines, fileCreated, serviceErr := h.service.EditFile(req)
-	if serviceErr != nil {
-		errorText := formatHTTPToolError(serviceErr)
-		resp := models.MCPToolResult{
-			Content: []models.MCPToolContent{{Type: "text", Text: errorText}},
-			IsError: true,
-		}
-		writeJSONResponse(w, http.StatusOK, resp) // Adhering to MCP spec: 200 OK with IsError:true
+	mcpResult, err := h.mcpProcessor.ExecuteTool("edit_file", req)
+	if err != nil {
+		errDetail := errors.NewInternalError(fmt.Sprintf("Error executing tool 'edit_file': %v", err))
+		writeJSONErrorResponse(w, http.StatusInternalServerError, errDetail)
 		return
 	}
-
-	successText := formatHTTPEditFileResult(filename, linesModified, newTotalLines, fileCreated)
-	resp := models.MCPToolResult{
-		Content: []models.MCPToolContent{{Type: "text", Text: successText}},
-		IsError: false,
-	}
-	writeJSONResponse(w, http.StatusOK, resp)
+	writeJSONResponse(w, http.StatusOK, mcpResult)
 }
 
 // StartServer initializes and starts the HTTP server.
@@ -297,32 +285,6 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	files, serviceErr := h.service.ListFiles(req)
-	if serviceErr != nil {
-		// MCPProcessor.ExecuteTool will format this into an MCPToolResult
-		// So, this block should ideally not be reached if ExecuteTool is called.
-		// However, if we directly call service and then plan to use mcpProcessor for formatting ONLY,
-		// this would be different. But the aim is to call ExecuteTool.
-
-		// Assuming ExecuteTool is used, this direct service call and subsequent formatting is replaced.
-		// For now, let's leave the old path commented out or remove it once fully refactored.
-		// errorText := formatHTTPToolError(serviceErr) // This would be p.formatToolError(serviceErr)
-		// resp := models.MCPToolResult{
-		// 	Content: []models.MCPToolContent{{Type: "text", Text: errorText}},
-		// 	IsError: true,
-		// }
-		// writeJSONResponse(w, http.StatusOK, resp)
-		// return
-	}
-
-	// Format the success response using the new helper
-	// successText := formatHTTPListFilesResult(files) // This would be p.formatListFilesResult(files)
-	// resp := models.MCPToolResult{
-	// 	Content: []models.MCPToolContent{{Type: "text", Text: successText}},
-	// 	IsError: false,
-	// }
-	// writeJSONResponse(w, http.StatusOK, resp)
 
 	// New path using mcpProcessor.ExecuteTool for list_files
 	mcpResult, err := h.mcpProcessor.ExecuteTool("list_files", req)

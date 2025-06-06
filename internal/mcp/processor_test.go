@@ -3,12 +3,10 @@ package mcp
 import (
 	"encoding/json"
 	"file-editor-server/internal/models"
-	"file-editor-server/internal/service" // Will be needed for mock
 	"fmt"
 	"strings"
 	"testing"
 	"time"
-
 	// Mocking framework, if available/preferred, could be used here.
 	// For now, using a simple mock implementation.
 )
@@ -229,7 +227,6 @@ func TestFormatReadFileResult(t *testing.T) {
 		t.Errorf("formatReadFileResult range start 0: expected\n'%s'\ngot\n'%s'", expectedRangeStart0, result)
 	}
 
-
 	// Test line range scenario - content empty (range outside actual lines, e.g., lines 10-12 of a 5 line file)
 	// service.ReadFile returns: content="", filename, totalLines=5, reqStartLine=10, reqEndLine=12, actualEndLine=-1 (or similar to indicate no lines returned), isRangeRequest=true
 	expectedEmptyRange := "File: empty_range.txt (lines 10-9 of 5 total)\n\n"
@@ -292,7 +289,7 @@ func TestMCPProcessor_HandleToolCall_Errors(t *testing.T) {
 			return "", "", 0, 0, 0, 0, false, &models.ErrorDetail{Code: 124, Message: "service read error"}
 		},
 		EditFileFunc: func(req models.EditFileRequest) (string, int, int, bool, *models.ErrorDetail) {
-			return "",0,0,false, &models.ErrorDetail{Code:125, Message:"service edit error"}
+			return "", 0, 0, false, &models.ErrorDetail{Code: 125, Message: "service edit error"}
 		},
 	}
 	processor := NewMCPProcessor(mockService)
@@ -333,8 +330,8 @@ func TestMCPProcessor_HandleToolCall_Errors(t *testing.T) {
 			expectRPCErr:  false,
 		},
 		{
-			name:          "list_files with bad params",
-			toolName:      "list_files",
+			name:     "list_files with bad params",
+			toolName: "list_files",
 			// This causes unmarshal error because ListFilesRequest is an empty struct
 			// so any fields here are "unknown" if DisallowUnknownFields were used,
 			// or simply a type mismatch if it expects {}.
@@ -378,37 +375,37 @@ func TestMCPProcessor_HandleToolCall_Errors(t *testing.T) {
 // TestExecuteTool is similar to handleToolCall but takes parsed args.
 // This mainly tests the type assertions and error paths for ExecuteTool itself.
 func TestMCPProcessor_ExecuteTool_ErrorsAndBasic(t *testing.T) {
-    mockService := &MockFileOperationService{
-        ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
-            if req == (models.ListFilesRequest{}) { // Basic check for valid empty request
-                 return []models.FileInfo{{Name: "test.txt", Lines: 1, Modified: "2023-01-01T00:00:00Z"}}, nil
-            }
-            return nil, &models.ErrorDetail{Code: 700, Message: "list files error in ExecuteTool"}
-        },
-    }
-    processor := NewMCPProcessor(mockService)
+	mockService := &MockFileOperationService{
+		ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
+			if req == (models.ListFilesRequest{}) { // Basic check for valid empty request
+				return []models.FileInfo{{Name: "test.txt", Lines: 1, Modified: "2023-01-01T00:00:00Z"}}, nil
+			}
+			return nil, &models.ErrorDetail{Code: 700, Message: "list files error in ExecuteTool"}
+		},
+	}
+	processor := NewMCPProcessor(mockService)
 
-    // Valid call
-    _, err := processor.ExecuteTool("list_files", models.ListFilesRequest{})
-    if err != nil {
-        t.Errorf("ExecuteTool with valid args for list_files failed: %v", err)
-    }
+	// Valid call
+	_, err := processor.ExecuteTool("list_files", models.ListFilesRequest{})
+	if err != nil {
+		t.Errorf("ExecuteTool with valid args for list_files failed: %v", err)
+	}
 
-    // Invalid argument type
-    expectedErrText := "invalid arguments type for list_files: expected models.ListFilesRequest, got string"
-    _, err = processor.ExecuteTool("list_files", "not-a-struct")
-    if err == nil || err.Error() != expectedErrText {
-        t.Errorf("ExecuteTool with invalid arg type: expected error '%s', got '%v'", expectedErrText, err)
-    }
+	// Invalid argument type
+	expectedErrText := "invalid arguments type for list_files: expected models.ListFilesRequest, got string"
+	_, err = processor.ExecuteTool("list_files", "not-a-struct")
+	if err == nil || err.Error() != expectedErrText {
+		t.Errorf("ExecuteTool with invalid arg type: expected error '%s', got '%v'", expectedErrText, err)
+	}
 
-    // Unknown tool
-    res, err := processor.ExecuteTool("super_tool", models.ListFilesRequest{})
-    if err != nil { // ExecuteTool returns MCPToolResult for unknown tool, not an error directly
-        t.Errorf("ExecuteTool with unknown tool returned an unexpected error: %v", err)
-    }
-    if !res.IsError || !strings.Contains(res.Content[0].Text, "Error: Unknown tool 'super_tool'.") {
-         t.Errorf("ExecuteTool with unknown tool: unexpected result: %+v", res)
-    }
+	// Unknown tool
+	res, err := processor.ExecuteTool("super_tool", models.ListFilesRequest{})
+	if err != nil { // ExecuteTool returns MCPToolResult for unknown tool, not an error directly
+		t.Errorf("ExecuteTool with unknown tool returned an unexpected error: %v", err)
+	}
+	if !res.IsError || !strings.Contains(res.Content[0].Text, "Error: Unknown tool 'super_tool'.") {
+		t.Errorf("ExecuteTool with unknown tool: unexpected result: %+v", res)
+	}
 }
 
 func init() {
@@ -419,35 +416,35 @@ func init() {
 // Example of how you might test ProcessRequest for "tools/call"
 // This would involve more setup for the mock service.
 func TestMCPProcessor_ProcessRequest_ToolsCall_ListFiles(t *testing.T) {
-    mockService := &MockFileOperationService{
-        ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
-            return []models.FileInfo{
-                {Name: "alpha.txt", Lines: 10, Modified: time.Now().UTC().Format(time.RFC3339)},
-            }, nil
-        },
-    }
-    processor := NewMCPProcessor(mockService)
+	mockService := &MockFileOperationService{
+		ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
+			return []models.FileInfo{
+				{Name: "alpha.txt", Lines: 10, Modified: time.Now().UTC().Format(time.RFC3339)},
+			}, nil
+		},
+	}
+	processor := NewMCPProcessor(mockService)
 
-    argsJSON := `{}`
-    paramsJSON := fmt.Sprintf(`{"name":"list_files", "arguments": %s}`, argsJSON)
+	argsJSON := `{}`
+	paramsJSON := fmt.Sprintf(`{"name":"list_files", "arguments": %s}`, argsJSON)
 
-    rpcReq := models.JSONRPCRequest{
-        JSONRPC: "2.0",
-        Method:  "tools/call",
-        Params:  json.RawMessage(paramsJSON),
-        ID:      "test-id-list",
-    }
+	rpcReq := models.JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params:  json.RawMessage(paramsJSON),
+		ID:      "test-id-list",
+	}
 
-    result, rpcErr := processor.ProcessRequest(rpcReq)
-    if rpcErr != nil {
-        t.Fatalf("ProcessRequest(tools/call list_files) returned RPC error: %v", rpcErr)
-    }
-    if result.IsError {
-        t.Fatalf("ProcessRequest(tools/call list_files) result IsError=true: %s", result.Content[0].Text)
-    }
-    // Further checks on result.Content[0].Text would verify the formatted output
-    // which is already covered by TestFormatListFilesResult
-    if !strings.Contains(result.Content[0].Text, "name: alpha.txt") {
-        t.Errorf("Expected list_files output to contain 'name: alpha.txt', got: %s", result.Content[0].Text)
-    }
+	result, rpcErr := processor.ProcessRequest(rpcReq)
+	if rpcErr != nil {
+		t.Fatalf("ProcessRequest(tools/call list_files) returned RPC error: %v", rpcErr)
+	}
+	if result.IsError {
+		t.Fatalf("ProcessRequest(tools/call list_files) result IsError=true: %s", result.Content[0].Text)
+	}
+	// Further checks on result.Content[0].Text would verify the formatted output
+	// which is already covered by TestFormatListFilesResult
+	if !strings.Contains(result.Content[0].Text, "name: alpha.txt") {
+		t.Errorf("Expected list_files output to contain 'name: alpha.txt', got: %s", result.Content[0].Text)
+	}
 }
