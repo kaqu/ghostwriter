@@ -3,7 +3,6 @@ package mcp
 import (
 	"encoding/json"
 	"file-editor-server/internal/models"
-	"file-editor-server/internal/service"
 	"reflect"
 	"testing"
 	"time"

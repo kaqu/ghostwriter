@@ -16,13 +16,13 @@ import (
 
 // StdioHandler handles JSON-RPC communication over standard input/output.
 type StdioHandler struct {
-	processor *mcp.MCPProcessor
+	processor mcp.MCPProcessorInterface // Use the interface
 }
 
 // NewStdioHandler creates a new StdioHandler.
-func NewStdioHandler(processor *mcp.MCPProcessor) *StdioHandler {
+func NewStdioHandler(processor mcp.MCPProcessorInterface) *StdioHandler { // Accept the interface
 	if processor == nil {
-		log.Fatal("MCPProcessor cannot be nil in NewStdioHandler") // Fatal, as it's critical
+		log.Fatal("MCPProcessorInterface cannot be nil in NewStdioHandler") // Fatal, as it's critical
 	}
 	return &StdioHandler{
 		processor: processor,

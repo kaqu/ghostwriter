@@ -1233,7 +1233,7 @@ func TestEditFile_FilenameTooLong(t *testing.T) {
 		Name:  longFilename,
 		Edits: []models.EditOperation{{Line: 1, Operation: "insert", Content: "test"}},
 	}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 
 	if err == nil {
 		t.Fatalf("EditFile expected to fail for filename too long, but succeeded")

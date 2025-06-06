@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"file-editor-server/internal/models"
 	"file-editor-server/internal/service"
+	"fmt"     // Added import
+	"strings" // Added import
 )
 
 // ToolCallParams represents the parameters for a tool call.
@@ -15,6 +17,11 @@ type ToolCallParams struct {
 // MCPProcessor handles MCP (Meta-Circular Protocol) requests.
 type MCPProcessor struct {
 	service service.FileOperationService
+}
+
+// MCPProcessorInterface defines the interface for MCP request processing.
+type MCPProcessorInterface interface {
+	ProcessRequest(req models.JSONRPCRequest) (*models.MCPToolResult, *models.JSONRPCError)
 }
 
 // NewMCPProcessor creates a new MCPProcessor.
