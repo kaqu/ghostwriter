@@ -30,3 +30,11 @@ curl -X POST -H 'Content-Type: application/json' \
 
 The server logs initialization information and will shut down gracefully on `SIGTERM` or Ctrl+C.
 
+## Testing
+
+Run the unit tests to verify the server's behavior:
+
+```bash
+go test ./...
+```
+
