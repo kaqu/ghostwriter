@@ -577,7 +577,6 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (
 		// This might need a diff algorithm for true accuracy. Let's assume abs difference is acceptable for now.
 	}
 
-	errRet = nil // Success
 	return filename, linesModified, newTotalLines, fileCreated, nil
 }
 

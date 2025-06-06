@@ -63,26 +63,26 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 		}
 
 		var req models.JSONRPCRequest
-		// Attempt to parse the ID first to include in parse error responses
-		var preParse struct {
-			ID      interface{} `json:"id"`
-			JSONRPC string      `json:"jsonrpc"`
-		}
-		json.Unmarshal(lineBytes, &preParse) // Ignore error, ID might be null or missing
+		response := models.JSONRPCResponse{JSONRPC: "2.0"} // Initialize response structure
 
 		if err := json.Unmarshal(lineBytes, &req); err != nil {
-			// Handle JSON parse error (-32700)
-			resp := models.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      preParse.ID, // Use pre-parsed ID if available
-				Error: &models.JSONRPCError{
-					Code:    errors.CodeParseError,
-					Message: fmt.Sprintf("Parse error: %v", err),
-				},
+			// Corrected version within the error block for "if err := json.Unmarshal(lineBytes, &req); err != nil { ... }":
+			var idForErrorResponse interface{}
+			// Attempt to extract ID specifically for this error response.
+			// This is a best-effort attempt, so we can ignore the error from this particular Unmarshal.
+			var idExtractor struct { ID interface{} `json:"id"` }
+			_ = json.Unmarshal(lineBytes, &idExtractor)
+			idForErrorResponse = idExtractor.ID
+
+			response.ID = idForErrorResponse // Use the safely extracted ID (or nil if not found)
+			response.Error = &models.JSONRPCError{
+				Code:    models.ErrCodeParseError, // Should be -32700
+				Message: fmt.Sprintf("Parse error: %v", err),
 			}
-			h.writeJSONRPCResponse(output, resp)
+			h.writeJSONRPCResponse(output, response)
 			continue
 		}
+		response.ID = req.ID // Set ID for valid requests
 
 		// Basic validation of the JSON-RPC request structure
 		if req.JSONRPC != "2.0" {
@@ -94,35 +94,26 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 					Message: "Invalid JSON-RPC version. Must be '2.0'.",
 				},
 			}
-			h.writeJSONRPCResponse(output, resp)
+			h.writeJSONRPCResponse(output, response) // Use the initialized response
 			continue
 		}
 		if req.Method == "" {
-			resp := models.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &models.JSONRPCError{
-					Code:    errors.CodeInvalidRequest,
-					Message: "Method not specified.",
-				},
+			response.Error = &models.JSONRPCError{ // Use the initialized response
+				Code:    errors.CodeInvalidRequest,
+				Message: "Method not specified.",
 			}
-			h.writeJSONRPCResponse(output, resp)
+			h.writeJSONRPCResponse(output, response) // Use the initialized response
 			continue
 		}
 
 		mcpResult, jsonrpcErr := h.processor.ProcessRequest(req)
 
-		finalResp := models.JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-		}
-
 		if jsonrpcErr != nil {
-			finalResp.Error = jsonrpcErr
+			response.Error = jsonrpcErr
 		} else {
-			finalResp.Result = mcpResult // MCPToolResult is the result
+			response.Result = mcpResult // MCPToolResult is the result
 		}
-		h.writeJSONRPCResponse(output, finalResp)
+		h.writeJSONRPCResponse(output, response) // Use the initialized response
 	}
 
 	if err := scanner.Err(); err != nil {
