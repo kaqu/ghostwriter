@@ -74,8 +74,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("max file size must be between 1 and 100 MB")
 	}
 
-	if c.OperationTimeoutSec < 1 || c.OperationTimeoutSec > 30 {
-		return fmt.Errorf("operation timeout must be between 1 and 30 seconds")
+	if c.OperationTimeoutSec < 1 || c.OperationTimeoutSec > 300 {
+		return fmt.Errorf("operation timeout must be between 1 and 300 seconds")
 	}
 
 	return nil

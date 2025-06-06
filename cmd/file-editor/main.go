@@ -29,7 +29,7 @@ func main() {
 
 	// 5. Initialize Dependencies
 	fsAdapter := filesystem.NewDefaultFileSystemAdapter()
-	lockManager := lock.NewLockManager(math.MaxInt32, time.Duration(cfg.OperationTimeoutSec)*time.Second) // Changed MaxConcurrentOps
+	lockManager := lock.NewLockManager(math.MaxInt32) // Updated: Removed defaultLockTimeout argument
 	fileService, err := service.NewDefaultFileOperationService(fsAdapter, lockManager, cfg)
 	if err != nil {
 		log.Printf("CRITICAL: Failed to initialize file operation service: %v\n", err)
@@ -48,25 +48,10 @@ func main() {
 	// Goroutine to start the selected transport
 	serverDoneChan := make(chan error, 1) // To signal when server stops
 
-	// --- Periodic Lock Cleanup ---
-	const lockCleanupInterval = 5 * time.Minute
-	lockCleanupStopChan := make(chan struct{})
-
-	go func() {
-		ticker := time.NewTicker(lockCleanupInterval)
-		defer ticker.Stop()
-		log.Println("Starting periodic lock cleanup routine.")
-		for {
-			select {
-			case <-ticker.C:
-				log.Println("Running expired lock cleanup...")
-				lockManager.CleanupExpiredLocks() // Assuming lockManager is accessible here
-			case <-lockCleanupStopChan:
-				log.Println("Stopping periodic lock cleanup routine.")
-				return
-			}
-		}
-	}()
+	// --- Periodic Lock Cleanup (Removed) ---
+	// const lockCleanupInterval = 5 * time.Minute
+	// lockCleanupStopChan := make(chan struct{})
+	// go func() { ... }()
 
 	// 6. Initialize and Start Transport
 	switch cfg.Transport {
@@ -139,7 +124,7 @@ func main() {
 	select {
 	case sig := <-shutdownChan:
 		log.Printf("Shutdown signal received: %s. Initiating graceful shutdown...\n", sig)
-		close(lockCleanupStopChan) // Signal lock cleanup goroutine to stop
+		// close(lockCleanupStopChan) // Removed: No longer needed
 
 		// --- Graceful Shutdown Logic ---
 		shutdownTimeout := time.Duration(cfg.OperationTimeoutSec) * time.Second
@@ -173,11 +158,11 @@ func main() {
 	case err := <-serverDoneChan:
 		if err != nil {
 			log.Printf("Server/handler stopped due to error: %v\n", err)
-			close(lockCleanupStopChan) // Also stop cleanup if server fails
+			// close(lockCleanupStopChan) // Removed: No longer needed
 			os.Exit(1)                 // Exit with error if server failed
 		}
 		log.Println("Server/handler stopped normally.")
-		close(lockCleanupStopChan) // Also stop cleanup if server stops normally
+		// close(lockCleanupStopChan) // Removed: No longer needed
 	}
 
 	log.Println("Application shutting down.")

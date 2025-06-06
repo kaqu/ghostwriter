@@ -33,19 +33,17 @@ type LockInfo struct {
 
 // LockManager manages file locks to control concurrent access.
 type LockManager struct {
-	locks              sync.Map // Stores filename (string) -> *LockInfo
-	semaphore          chan struct{}
-	defaultLockTimeout time.Duration // Not used directly by AcquireLock, but for potential cleanup logic
+	locks     sync.Map // Stores filename (string) -> *LockInfo
+	semaphore chan struct{}
 }
 
 // NewLockManager initializes and returns a new LockManager.
-func NewLockManager(maxConcurrentOps int, defaultLockTimeout time.Duration) *LockManager {
+func NewLockManager(maxConcurrentOps int) *LockManager {
 	if maxConcurrentOps <= 0 {
 		maxConcurrentOps = 1 // Ensure at least one operation can proceed
 	}
 	return &LockManager{
-		semaphore:          make(chan struct{}, maxConcurrentOps),
-		defaultLockTimeout: defaultLockTimeout,
+		semaphore: make(chan struct{}, maxConcurrentOps),
 	}
 }
 
@@ -108,32 +106,4 @@ func (lm *LockManager) ReleaseLock(filename string) error {
 // GetCurrentLockCount returns the current number of active locks. Useful for testing.
 func (lm *LockManager) GetCurrentLockCount() int {
 	return len(lm.semaphore)
-}
-
-// CleanupExpiredLocks iterates through the map and removes locks older than defaultLockTimeout.
-// This is intended to be run periodically by a background goroutine.
-func (lm *LockManager) CleanupExpiredLocks() {
-	now := time.Now()
-	lm.locks.Range(func(key, value interface{}) bool {
-		filename := key.(string)
-		lockInfo, ok := value.(*LockInfo)
-		if !ok {
-			// Should not happen if only LockInfo is stored
-			lm.locks.Delete(filename) // Remove unexpected item
-			return true
-		}
-
-		if now.Sub(lockInfo.AcquiredAt) > lm.defaultLockTimeout {
-			currentLockInfo, loaded := lm.locks.Load(filename)
-			if loaded && currentLockInfo == lockInfo {
-				_ = lockInfo.FLock.Unlock()
-				lm.locks.Delete(filename)
-				select {
-				case <-lm.semaphore:
-				default:
-				}
-			}
-		}
-		return true
-	})
 }
