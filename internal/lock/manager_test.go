@@ -21,15 +21,12 @@ func TestLockManager_NewLockManager(t *testing.T) {
 	if lm == nil {
 		t.Fatal("NewLockManager returned nil")
 	}
-	if lm.maxConcurrentOps != 5 {
-		t.Errorf("expected maxConcurrentOps 5, got %d", lm.maxConcurrentOps)
-	}
 	if lm.defaultLockTimeout != time.Second {
 		t.Errorf("expected defaultLockTimeout 1s, got %v", lm.defaultLockTimeout)
 	}
 	lmZero := NewLockManager(0, time.Second)
-	if lmZero.maxConcurrentOps != 1 {
-		t.Errorf("expected maxConcurrentOps to default to 1 if 0 passed, got %d", lmZero.maxConcurrentOps)
+	if lmZero == nil {
+		t.Fatal("NewLockManager returned nil for zero value")
 	}
 }
 

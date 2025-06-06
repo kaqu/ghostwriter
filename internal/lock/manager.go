@@ -12,8 +12,6 @@ import (
 var (
 	// ErrLockTimeout is returned when acquiring a lock times out.
 	ErrLockTimeout = fmt.Errorf("timeout acquiring lock")
-	// ErrMaxConcurrentOpsReached is returned when the maximum number of concurrent operations is reached.
-	ErrMaxConcurrentOpsReached = fmt.Errorf("maximum concurrent operations reached")
 	// ErrLockNotFound is returned when trying to release a lock that does not exist.
 	ErrLockNotFound = fmt.Errorf("lock not found")
 	// ErrFilenameRequired is returned when a filename is empty.
@@ -35,10 +33,8 @@ type LockInfo struct {
 
 // LockManager manages file locks to control concurrent access.
 type LockManager struct {
-	locks              sync.Map   // Stores filename (string) -> *LockInfo
-	mu                 sync.Mutex // Protects currentLockCount
-	currentLockCount   int
-	maxConcurrentOps   int
+	locks              sync.Map // Stores filename (string) -> *LockInfo
+	semaphore          chan struct{}
 	defaultLockTimeout time.Duration // Not used directly by AcquireLock, but for potential cleanup logic
 }
 
@@ -48,64 +44,43 @@ func NewLockManager(maxConcurrentOps int, defaultLockTimeout time.Duration) *Loc
 		maxConcurrentOps = 1 // Ensure at least one operation can proceed
 	}
 	return &LockManager{
-		maxConcurrentOps:   maxConcurrentOps,
+		semaphore:          make(chan struct{}, maxConcurrentOps),
 		defaultLockTimeout: defaultLockTimeout,
 	}
 }
 
 // AcquireLock attempts to acquire a lock for the given filename.
-// It respects maxConcurrentOps globally and the specific timeout for the file lock.
+// It enforces the configured global concurrency limit using a semaphore and
+// relies on OS-level file locking for the file itself.
 func (lm *LockManager) AcquireLock(filename string, timeout time.Duration) error {
 	if filename == "" {
 		return ErrFilenameRequired
 	}
 
-	startTime := time.Now()
-	deadline := startTime.Add(timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-	for {
-		// Check global concurrency limit first
-		lm.mu.Lock()
-		if lm.currentLockCount >= lm.maxConcurrentOps {
-			lm.mu.Unlock()
-			// Global limit reached, wait or timeout
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout waiting for global capacity: %w while trying to lock %s", ErrLockTimeout, filename)
-			}
-			time.Sleep(shortPollInterval)
-			continue // Re-check global limit and then specific file lock
-		}
-		// Tentatively increment, but be ready to decrement if file-specific lock fails
-		lm.currentLockCount++
-		lm.mu.Unlock()
-
-		// Try to acquire the specific file lock using filesystem locking
-		fileLock := flock.New(filename + ".lock")
-		ctx, cancel := context.WithDeadline(context.Background(), deadline)
-		locked, err := fileLock.TryLockContext(ctx, shortPollInterval)
-		cancel()
-		if err != nil {
-			lm.mu.Lock()
-			lm.currentLockCount--
-			lm.mu.Unlock()
-			return fmt.Errorf("error acquiring file lock for %s: %w", filename, err)
-		}
-		if locked {
-			newLockInfo := &LockInfo{AcquiredAt: time.Now(), FLock: fileLock}
-			lm.locks.Store(filename, newLockInfo)
-			return nil
-		}
-
-		// Failed to acquire within timeout
-		lm.mu.Lock()
-		lm.currentLockCount--
-		lm.mu.Unlock()
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout acquiring lock for file %s: %w", filename, ErrLockTimeout)
-		}
-		// wait a bit before retrying
-		time.Sleep(shortPollInterval)
+	// Acquire global semaphore slot
+	select {
+	case lm.semaphore <- struct{}{}:
+	case <-ctx.Done():
+		return fmt.Errorf("timeout waiting for global capacity: %w while trying to lock %s", ErrLockTimeout, filename)
 	}
+
+	// Attempt filesystem lock
+	fileLock := flock.New(filename + ".lock")
+	locked, err := fileLock.TryLockContext(ctx, shortPollInterval)
+	if err != nil {
+		<-lm.semaphore
+		return fmt.Errorf("error acquiring file lock for %s: %w", filename, err)
+	}
+	if !locked {
+		<-lm.semaphore
+		return fmt.Errorf("timeout acquiring lock for file %s: %w", filename, ErrLockTimeout)
+	}
+
+	lm.locks.Store(filename, &LockInfo{AcquiredAt: time.Now(), FLock: fileLock})
+	return nil
 }
 
 // ReleaseLock removes the lock for the filename from the sync.Map.
@@ -123,19 +98,16 @@ func (lm *LockManager) ReleaseLock(filename string) error {
 		_ = info.FLock.Unlock()
 	}
 
-	lm.mu.Lock()
-	if lm.currentLockCount > 0 {
-		lm.currentLockCount--
+	select {
+	case <-lm.semaphore:
+	default:
 	}
-	lm.mu.Unlock()
 	return nil
 }
 
 // GetCurrentLockCount returns the current number of active locks. Useful for testing.
 func (lm *LockManager) GetCurrentLockCount() int {
-	lm.mu.Lock()
-	defer lm.mu.Unlock()
-	return lm.currentLockCount
+	return len(lm.semaphore)
 }
 
 // CleanupExpiredLocks iterates through the map and removes locks older than defaultLockTimeout.
@@ -156,11 +128,10 @@ func (lm *LockManager) CleanupExpiredLocks() {
 			if loaded && currentLockInfo == lockInfo {
 				_ = lockInfo.FLock.Unlock()
 				lm.locks.Delete(filename)
-				lm.mu.Lock()
-				if lm.currentLockCount > 0 {
-					lm.currentLockCount--
+				select {
+				case <-lm.semaphore:
+				default:
 				}
-				lm.mu.Unlock()
 			}
 		}
 		return true
