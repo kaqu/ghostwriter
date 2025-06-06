@@ -281,19 +281,31 @@ func TestReadFile_Success_FullRead(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(len(content)), IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename}
-	resp, err := service.ReadFile(req)
+	resContent, resFilename, resTotalLines, resReqStartLine, resReqEndLine, resActualEndLine, resIsRange, err := service.ReadFile(req)
 
 	if err != nil {
 		t.Fatalf("ReadFile failed: %v", err.Message)
 	}
-	if resp.Content != content {
-		t.Errorf("Expected content %q, got %q", content, resp.Content)
+	if resContent != content {
+		t.Errorf("Expected content %q, got %q", content, resContent)
 	}
-	if resp.TotalLines != 3 {
-		t.Errorf("Expected TotalLines 3, got %d", resp.TotalLines)
+	if resFilename != filename {
+		t.Errorf("Expected filename %q, got %q", filename, resFilename)
 	}
-	if resp.RangeRequested.StartLine != 1 || resp.RangeRequested.EndLine != 3 {
-		t.Errorf("Expected RangeRequested 1-3, got %d-%d", resp.RangeRequested.StartLine, resp.RangeRequested.EndLine)
+	if resTotalLines != 3 {
+		t.Errorf("Expected TotalLines 3, got %d", resTotalLines)
+	}
+	if resReqStartLine != 0 { // 0 because original request had 0
+		t.Errorf("Expected resReqStartLine 0, got %d", resReqStartLine)
+	}
+	if resReqEndLine != 0 { // 0 because original request had 0
+		t.Errorf("Expected resReqEndLine 0, got %d", resReqEndLine)
+	}
+	if resActualEndLine != 2 { // 0-based index of last line (3 lines total -> index 2)
+		t.Errorf("Expected resActualEndLine 2, got %d", resActualEndLine)
+	}
+	if resIsRange { // Should be false for full read
+		t.Error("Expected resIsRange to be false")
 	}
 }
 
@@ -307,20 +319,29 @@ func TestReadFile_Success_PartialRead_StartOnly(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(len(content)), IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename, StartLine: 3}
-	resp, err := service.ReadFile(req)
+	resContent, _, resTotalLines, resReqStartLine, resReqEndLine, resActualEndLine, resIsRange, err := service.ReadFile(req)
 
 	if err != nil {
 		t.Fatalf("ReadFile failed: %v", err.Message)
 	}
 	expectedContent := "line3\nline4"
-	if resp.Content != expectedContent {
-		t.Errorf("Expected content %q, got %q", expectedContent, resp.Content)
+	if resContent != expectedContent {
+		t.Errorf("Expected content %q, got %q", expectedContent, resContent)
 	}
-	if resp.TotalLines != 4 {
-		t.Errorf("Expected TotalLines 4, got %d", resp.TotalLines)
+	if resTotalLines != 4 {
+		t.Errorf("Expected TotalLines 4, got %d", resTotalLines)
 	}
-	if resp.RangeRequested.StartLine != 3 || resp.RangeRequested.EndLine != 4 {
-		t.Errorf("Expected RangeRequested 3-4, got %d-%d", resp.RangeRequested.StartLine, resp.RangeRequested.EndLine)
+	if resReqStartLine != 3 {
+		t.Errorf("Expected resReqStartLine 3, got %d", resReqStartLine)
+	}
+	if resReqEndLine != 0 { // Original req.EndLine was 0
+		t.Errorf("Expected resReqEndLine 0, got %d", resReqEndLine)
+	}
+	if resActualEndLine != 3 { // 0-based index of last line (line4 is index 3)
+		t.Errorf("Expected resActualEndLine 3, got %d", resActualEndLine)
+	}
+	if !resIsRange {
+		t.Error("Expected resIsRange to be true")
 	}
 }
 
@@ -334,20 +355,29 @@ func TestReadFile_Success_PartialRead_StartAndEnd(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(len(content)), IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename, StartLine: 2, EndLine: 4}
-	resp, err := service.ReadFile(req)
+	resContent, _, resTotalLines, resReqStartLine, resReqEndLine, resActualEndLine, resIsRange, err := service.ReadFile(req)
 	if err != nil {
 		t.Fatalf("ReadFile failed: %v", err.Message)
 	}
 
 	expected := "l2\nl3\nl4"
-	if resp.Content != expected {
-		t.Errorf("Expected content %q, got %q", expected, resp.Content)
+	if resContent != expected {
+		t.Errorf("Expected content %q, got %q", expected, resContent)
 	}
-	if resp.TotalLines != 5 {
-		t.Errorf("Expected TotalLines 5, got %d", resp.TotalLines)
+	if resTotalLines != 5 {
+		t.Errorf("Expected TotalLines 5, got %d", resTotalLines)
 	}
-	if resp.RangeRequested.StartLine != 2 || resp.RangeRequested.EndLine != 4 {
-		t.Errorf("Expected RangeRequested 2-4, got %d-%d", resp.RangeRequested.StartLine, resp.RangeRequested.EndLine)
+	if resReqStartLine != 2 {
+		t.Errorf("Expected resReqStartLine 2, got %d", resReqStartLine)
+	}
+	if resReqEndLine != 4 {
+		t.Errorf("Expected resReqEndLine 4, got %d", resReqEndLine)
+	}
+	if resActualEndLine != 3 { // l4 is index 3
+		t.Errorf("Expected resActualEndLine 3, got %d", resActualEndLine)
+	}
+	if !resIsRange {
+		t.Error("Expected resIsRange to be true")
 	}
 }
 
@@ -355,7 +385,7 @@ func TestReadFile_Error_FileNotFound(t *testing.T) {
 	service, _, _ := setup(t)
 	defer cleanup(t)
 	req := models.ReadFileRequest{Name: "nonexistent.txt"}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -373,7 +403,7 @@ func TestReadFile_Error_FileTooLarge(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(testConfig.MaxFileSizeMB*1024*1024 + 1), IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -401,7 +431,7 @@ func TestReadFile_Error_InvalidUTF8(t *testing.T) {
 	mockFs.isInvalidUTF8Content[string(invalidContent)] = true
 
 	req := models.ReadFileRequest{Name: filename}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -430,7 +460,7 @@ func TestReadFile_Error_PathTraversal(t *testing.T) {
 	for _, name := range invalidNames {
 		t.Run(name, func(t *testing.T) {
 			req := models.ReadFileRequest{Name: name}
-			_, err := service.ReadFile(req)
+			_, _, _, _, _, _, _, err := service.ReadFile(req)
 			if err == nil {
 				t.Fatalf("Expected error for path %s, got nil", name)
 			}
@@ -459,7 +489,7 @@ func TestReadFile_Error_MaxLineCountExceeded(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: int64(len(content)), IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 	if err == nil {
 		t.Fatalf("Expected error for max line count, got nil")
 	}
@@ -484,23 +514,23 @@ func TestEditFile_Success_CreateFile(t *testing.T) {
 		},
 		Append: "new line", // Appending the second line
 	}
-	resp, err := service.EditFile(req)
+	resFilename, resLinesModified, resNewTotalLines, resFileCreated, err := service.EditFile(req)
 	if err != nil {
 		t.Fatalf("EditFile failed: %v", err.Message)
 	}
 
-	if !resp.Success {
-		t.Error("Expected Success to be true")
+	if resFilename != filename {
+		t.Errorf("Expected filename %q, got %q", filename, resFilename)
 	}
-	if !resp.FileCreated {
+	if !resFileCreated {
 		t.Error("Expected FileCreated to be true")
 	}
-	if resp.NewTotalLines != 2 {
-		t.Errorf("Expected NewTotalLines 2, got %d", resp.NewTotalLines)
+	if resNewTotalLines != 2 {
+		t.Errorf("Expected NewTotalLines 2, got %d", resNewTotalLines)
 	}
 	// LinesModified is abs(NewTotalLines - OriginalTotalLines) -> for new file, Original is 0. So 2.
-	if resp.LinesModified != 2 {
-		t.Errorf("Expected LinesModified 2, got %d", resp.LinesModified)
+	if resLinesModified != 2 {
+		t.Errorf("Expected LinesModified 2, got %d", resLinesModified)
 	}
 
 	fullPath := filepath.Join(tempWorkingDir, filename)
@@ -551,26 +581,26 @@ func TestEditFile_Success_ModifyExisting(t *testing.T) {
 	// 4. Append "appended line":
 	//    File: "line two replaced\ninserted before line three\nline three\nappended line" (4 lines)
 
-	resp, err := service.EditFile(req)
+	resFilename, resLinesModified, resNewTotalLines, resFileCreated, err := service.EditFile(req)
 	if err != nil {
 		t.Fatalf("EditFile failed: %v", err.Message)
 	}
 
-	if !resp.Success {
-		t.Error("Expected Success to be true")
+	if resFilename != filename {
+		t.Errorf("Expected filename %q, got %q", filename, resFilename)
 	}
-	if resp.FileCreated {
+	if resFileCreated {
 		t.Error("Expected FileCreated to be false")
 	}
-	if resp.NewTotalLines != 4 {
-		t.Errorf("Expected NewTotalLines 4, got %d", resp.NewTotalLines)
+	if resNewTotalLines != 4 {
+		t.Errorf("Expected NewTotalLines 4, got %d", resNewTotalLines)
 	}
 	// original 3, new 4. LinesModified = abs(4-3) = 1.
-	if resp.LinesModified != 1 {
-		t.Errorf("Expected LinesModified 1, got %d", resp.LinesModified)
+	if resLinesModified != 1 {
+		t.Errorf("Expected LinesModified 1, got %d", resLinesModified)
 	}
 
-	finalContent := mockFs.files[fullPath] // S1005: unnecessary assignment to the blank identifier
+	finalContent := mockFs.files[fullPath]
 	expectedFinalContent := "line two replaced\ninserted before line three\nline three\nappended line"
 	if string(finalContent) != expectedFinalContent {
 		t.Errorf("Expected final content %q, got %q", expectedFinalContent, string(finalContent))
@@ -581,7 +611,7 @@ func TestEditFile_Error_FileNotFound_NoCreate(t *testing.T) {
 	service, _, _ := setup(t)
 	defer cleanup(t)
 	req := models.EditFileRequest{Name: "no_create.txt", CreateIfMissing: false}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -595,7 +625,7 @@ func TestEditFile_Error_LockFailed(t *testing.T) {
 	defer cleanup(t)
 	mockLm.acquireShouldFail = true
 	req := models.EditFileRequest{Name: "lockfail.txt", CreateIfMissing: true}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -616,7 +646,7 @@ func TestEditFile_Error_EditLineOutOfRange(t *testing.T) {
 		Name:  filename,
 		Edits: []models.EditOperation{{Line: 5, Operation: "insert", Content: "fail"}},
 	}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -643,7 +673,7 @@ func TestEditFile_Error_ContentTooLargeAfterEdit(t *testing.T) {
 		Name: filename, CreateIfMissing: true, // Needs to be true for this test path if file doesn't exist
 		Edits: []models.EditOperation{{Line: 1, Operation: "replace", Content: longContent}},
 	}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -664,7 +694,7 @@ func TestEditFile_Error_FilenameValidation(t *testing.T) {
 	service, _, _ := setup(t)
 	defer cleanup(t)
 	req := models.EditFileRequest{Name: "inval*d.txt", CreateIfMissing: true}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -691,17 +721,17 @@ func TestEditFile_Success_DeleteLastLine(t *testing.T) {
 			{Line: 2, Operation: "delete"},
 		},
 	}
-	resp, err := service.EditFile(req)
+	_, _, resNewTotalLines, _, err := service.EditFile(req)
 	if err != nil {
 		t.Fatalf("EditFile failed: %v", err.Message)
 	}
-	if resp.NewTotalLines != 1 {
-		t.Errorf("Expected NewTotalLines 1, got %d", resp.NewTotalLines)
+	if resNewTotalLines != 1 {
+		t.Errorf("Expected NewTotalLines 1, got %d", resNewTotalLines)
 	}
 	expectedContent := "line1"
-	finalContent := mockFs.files[fullPath] // S1005: unnecessary assignment to the blank identifier
-	if string(finalContent) != expectedContent {
-		t.Errorf("Expected content %q, got %q", expectedContent, string(finalContent))
+	finalContentBytes := mockFs.files[fullPath]
+	if string(finalContentBytes) != expectedContent {
+		t.Errorf("Expected content %q, got %q", expectedContent, string(finalContentBytes))
 	}
 }
 
@@ -720,7 +750,7 @@ func TestEditFile_Error_DeleteFromEmptyFile(t *testing.T) {
 			{Line: 1, Operation: "delete"},
 		},
 	}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 	if err == nil {
 		t.Fatal("Expected error when deleting from empty file, got nil")
 	}
@@ -742,19 +772,28 @@ func TestReadFile_EmptyFile(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: 0, IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename}
-	resp, err := service.ReadFile(req)
+	resContent, _, resTotalLines, resReqStartLine, resReqEndLine, resActualEndLine, resIsRange, err := service.ReadFile(req)
 
 	if err != nil {
 		t.Fatalf("ReadFile failed for empty file: %v", err.Message)
 	}
-	if resp.Content != "" {
-		t.Errorf("Expected empty content for empty file, got %q", resp.Content)
+	if resContent != "" {
+		t.Errorf("Expected empty content for empty file, got %q", resContent)
 	}
-	if resp.TotalLines != 0 { // SplitLines on "" results in []string{} which is 0 lines
-		t.Errorf("Expected TotalLines 0 for empty file, got %d", resp.TotalLines)
+	if resTotalLines != 0 { // SplitLines on "" results in []string{} which is 0 lines
+		t.Errorf("Expected TotalLines 0 for empty file, got %d", resTotalLines)
 	}
-	if resp.RangeRequested.StartLine != 1 || resp.RangeRequested.EndLine != 0 { // Default range for empty file
-		t.Errorf("Expected RangeRequested 1-0 for empty file, got %d-%d", resp.RangeRequested.StartLine, resp.RangeRequested.EndLine)
+	if resReqStartLine != 0 { // Original req start_line
+		t.Errorf("Expected resReqStartLine 0, got %d", resReqStartLine)
+	}
+	if resReqEndLine != 0 { // Original req end_line
+		t.Errorf("Expected resReqEndLine 0, got %d", resReqEndLine)
+	}
+	if resActualEndLine != -1 { // 0-based index for empty file
+		t.Errorf("Expected resActualEndLine -1 for empty file, got %d", resActualEndLine)
+	}
+	if resIsRange { // Not a range request by default
+		t.Error("Expected resIsRange false for full read of empty file")
 	}
 }
 
@@ -768,20 +807,29 @@ func TestReadFile_SingleNewlineFile(t *testing.T) {
 	mockFs.stats[fullPath] = &filesystem.FileStats{Size: 1, IsDir: false}
 
 	req := models.ReadFileRequest{Name: filename}
-	resp, err := service.ReadFile(req)
+	resContent, _, resTotalLines, resReqStartLine, resReqEndLine, resActualEndLine, resIsRange, err := service.ReadFile(req)
 
 	if err != nil {
 		t.Fatalf("ReadFile failed for single newline file: %v", err.Message)
 	}
 	// SplitLines on "\n" results in {""} (one empty line)
-	if resp.Content != "" { // JoinLinesWithNewlines on {""} is ""
-		t.Errorf("Expected empty content for single newline file, got %q", resp.Content)
+	if resContent != "" { // JoinLinesWithNewlines on {""} is ""
+		t.Errorf("Expected empty content for single newline file, got %q", resContent)
 	}
-	if resp.TotalLines != 1 {
-		t.Errorf("Expected TotalLines 1 for single newline file, got %d", resp.TotalLines)
+	if resTotalLines != 1 {
+		t.Errorf("Expected TotalLines 1 for single newline file, got %d", resTotalLines)
 	}
-	if resp.RangeRequested.StartLine != 1 || resp.RangeRequested.EndLine != 1 {
-		t.Errorf("Expected RangeRequested 1-1 for single newline, got %d-%d", resp.RangeRequested.StartLine, resp.RangeRequested.EndLine)
+	if resReqStartLine != 0 {
+		t.Errorf("Expected resReqStartLine 0, got %d", resReqStartLine)
+	}
+	if resReqEndLine != 0 {
+		t.Errorf("Expected resReqEndLine 0, got %d", resReqEndLine)
+	}
+	if resActualEndLine != 0 { // 0-based index of the first line (which is empty)
+		t.Errorf("Expected resActualEndLine 0 for single newline, got %d", resActualEndLine)
+	}
+	if resIsRange {
+		t.Error("Expected resIsRange false for full read of newline file")
 	}
 }
 
@@ -795,17 +843,17 @@ func TestListFiles_EmptyDirectory(t *testing.T) {
 	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{}
 
 	req := models.ListFilesRequest{}
-	resp, err := service.ListFiles(req)
+	files, dir, err := service.ListFiles(req)
 
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err.Message)
 	}
 
-	if resp.TotalCount != 0 {
-		t.Errorf("Expected TotalCount 0, got %d", resp.TotalCount)
+	if len(files) != 0 {
+		t.Errorf("Expected Files to be empty, got %d items", len(files))
 	}
-	if len(resp.Files) != 0 {
-		t.Errorf("Expected Files to be empty, got %d items", len(resp.Files))
+	if dir != tempWorkingDir {
+		t.Errorf("Expected directory %s, got %s", tempWorkingDir, dir)
 	}
 }
 
@@ -837,32 +885,32 @@ func TestListFiles_WithFilesHiddenAndDirs(t *testing.T) {
 	// No need to mock stats for .hiddenfile or subdir as they should be filtered out before stats are read by the tested logic
 
 	req := models.ListFilesRequest{}
-	resp, err := service.ListFiles(req)
+	files, dir, err := service.ListFiles(req)
 
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err.Message)
 	}
 
-	if resp.TotalCount != 2 {
-		t.Errorf("Expected TotalCount 2, got %d", resp.TotalCount)
+	if len(files) != 2 {
+		t.Fatalf("Expected 2 files in response, got %d", len(files))
 	}
-	if len(resp.Files) != 2 {
-		t.Fatalf("Expected 2 files in response, got %d", len(resp.Files))
+	if dir != tempWorkingDir {
+		t.Errorf("Expected directory %s, got %s", tempWorkingDir, dir)
 	}
 
 	// Check sorting and content
-	if resp.Files[0].Name != "another.txt" {
-		t.Errorf("Expected file[0] to be 'another.txt', got %s", resp.Files[0].Name)
+	if files[0].Name != "another.txt" {
+		t.Errorf("Expected file[0] to be 'another.txt', got %s", files[0].Name)
 	}
-	if resp.Files[0].Lines != 1 { // "some content" is 1 line
-		t.Errorf("Expected 'another.txt' to have 1 line, got %d", resp.Files[0].Lines)
+	if files[0].Lines != 1 { // "some content" is 1 line
+		t.Errorf("Expected 'another.txt' to have 1 line, got %d", files[0].Lines)
 	}
 
-	if resp.Files[1].Name != "file1.txt" {
-		t.Errorf("Expected file[1] to be 'file1.txt', got %s", resp.Files[1].Name)
+	if files[1].Name != "file1.txt" {
+		t.Errorf("Expected file[1] to be 'file1.txt', got %s", files[1].Name)
 	}
-	if resp.Files[1].Lines != 2 { // "more content\nnext line" is 2 lines
-		t.Errorf("Expected 'file1.txt' to have 2 lines, got %d", resp.Files[1].Lines)
+	if files[1].Lines != 2 { // "more content\nnext line" is 2 lines
+		t.Errorf("Expected 'file1.txt' to have 2 lines, got %d", files[1].Lines)
 	}
 }
 
@@ -918,22 +966,22 @@ func TestListFiles_LineCounts(t *testing.T) {
 	mockFs.isInvalidUTF8Content[string(invalidUTF8ContentBytes)] = true
 
 	req := models.ListFilesRequest{}
-	resp, err := service.ListFiles(req)
+	files, dir, err := service.ListFiles(req)
 
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err.Message)
 	}
 
-	if resp.TotalCount != 5 {
-		t.Errorf("Expected TotalCount 5, got %d", resp.TotalCount)
+	if len(files) != 5 {
+		t.Fatalf("Expected 5 files in response, got %d", len(files))
 	}
-	if len(resp.Files) != 5 {
-		t.Fatalf("Expected 5 files in response, got %d", len(resp.Files))
+	if dir != tempWorkingDir {
+		t.Errorf("Expected directory %s, got %s", tempWorkingDir, dir)
 	}
 
 	// Create a map for easy lookup and verification
 	results := make(map[string]models.FileInfo)
-	for _, f := range resp.Files {
+	for _, f := range files {
 		results[f.Name] = f
 	}
 
@@ -986,7 +1034,7 @@ func TestEditFile_Error_InvalidUTF8_InEditOperation_Replace(t *testing.T) {
 		},
 	}
 
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 
 	if err == nil {
 		t.Fatal("EditFile expected to fail for invalid UTF-8 in replace operation, but succeeded")
@@ -1019,7 +1067,7 @@ func TestEditFile_Error_InvalidUTF8_InEditOperation_Insert(t *testing.T) {
 		},
 	}
 
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 
 	if err == nil {
 		t.Fatal("EditFile expected to fail for invalid UTF-8 in insert operation, but succeeded")
@@ -1054,7 +1102,7 @@ func TestEditFile_Error_InvalidUTF8_InAppendContent(t *testing.T) {
 		},
 	}
 
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 
 	if err == nil {
 		t.Fatal("EditFile expected to fail for invalid UTF-8 in append operation, but succeeded")
@@ -1104,13 +1152,13 @@ func TestReadFile_Symlink_Allowed(t *testing.T) {
 	}
 
 	req := models.ReadFileRequest{Name: symlinkFilename}
-	resp, err := service.ReadFile(req)
+	resContent, _, _, _, _, _, _, err := service.ReadFile(req)
 
 	if err != nil {
 		t.Fatalf("ReadFile failed: %v", err.Message)
 	}
-	if resp.Content != targetContent {
-		t.Errorf("Expected content %q, got %q", targetContent, resp.Content)
+	if resContent != targetContent {
+		t.Errorf("Expected content %q, got %q", targetContent, resContent)
 	}
 }
 
@@ -1137,7 +1185,7 @@ func TestReadFile_Symlink_Traversal_Denied(t *testing.T) {
 	}
 
 	req := models.ReadFileRequest{Name: symlinkFilename}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 
 	if err == nil {
 		t.Fatal("ReadFile expected to fail for symlink traversal, but succeeded")
@@ -1160,7 +1208,7 @@ func TestReadFile_FilenameTooLong(t *testing.T) {
 	longFilename := strings.Repeat("a", maxLength+1)
 
 	req := models.ReadFileRequest{Name: longFilename}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 
 	if err == nil {
 		t.Fatalf("ReadFile expected to fail for filename too long, but succeeded")
@@ -1220,7 +1268,7 @@ func TestReadFile_Symlink_Dangling(t *testing.T) {
 	}
 
 	req := models.ReadFileRequest{Name: symlinkFilename}
-	_, err := service.ReadFile(req)
+	_, _, _, _, _, _, _, err := service.ReadFile(req)
 
 	if err == nil {
 		t.Fatal("ReadFile expected to fail for dangling symlink, but succeeded")
@@ -1284,14 +1332,14 @@ func TestEditFile_Symlink_Allowed(t *testing.T) {
 			{Line: 1, Operation: "replace", Content: editContent},
 		},
 	}
-	resp, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 
 	if err != nil {
 		t.Fatalf("EditFile failed: %v", err.Message)
 	}
-	if !resp.Success {
-		t.Error("EditFile was not successful")
-	}
+	// if !resp.Success { // Success is implicit if err is nil for new signature
+	// 	t.Error("EditFile was not successful")
+	// }
 
 	// Verify that the content of absSymlinkFile (which represents the target via OS behavior) was changed.
 	// Our mock WriteFileBytesAtomic writes to the given path, so absSymlinkFile's content in mockFs.files will be updated.
@@ -1321,7 +1369,7 @@ func TestEditFile_Symlink_Traversal_Denied(t *testing.T) {
 		},
 		CreateIfMissing: false, // Ensure it doesn't try to create /etc/passwd
 	}
-	_, err := service.EditFile(req)
+	_, _, _, _, err := service.EditFile(req)
 
 	if err == nil {
 		t.Fatal("EditFile expected to fail for symlink traversal, but succeeded")

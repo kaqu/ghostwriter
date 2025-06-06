@@ -15,47 +15,46 @@ import (
 )
 
 // --- Mock FileOperationService ---
+// This mock is adjusted to align with the new service signatures used by MCPProcessor tests.
 type mockFileOperationService struct {
-	ReadFileFunc  func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail)
-	EditFileFunc  func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail)
-	ListFilesFunc func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) // Added
+	ListFilesFunc func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail)
+	ReadFileFunc  func(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail)
+	EditFileFunc  func(req models.EditFileRequest) (filename string, linesModified int, newTotalLines int, fileCreated bool, err *models.ErrorDetail)
 }
 
-func (m *mockFileOperationService) ReadFile(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
-	if m.ReadFileFunc != nil {
-		return m.ReadFileFunc(req)
-	}
-	return nil, errors.NewInternalError("ReadFileFunc not implemented in mock")
-}
-
-func (m *mockFileOperationService) EditFile(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail) {
-	if m.EditFileFunc != nil {
-		return m.EditFileFunc(req)
-	}
-	return nil, errors.NewInternalError("EditFileFunc not implemented in mock")
-}
-
-// ListFiles implements the FileOperationService interface for the mock.
-func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) {
+func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
 	if m.ListFilesFunc != nil {
 		return m.ListFilesFunc(req)
 	}
-	// Provide a default mock response that's valid but minimal.
-	return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/mock/dir"}, nil
+	return nil, "", errors.NewInternalError("ListFilesFunc not implemented in mock")
 }
+
+func (m *mockFileOperationService) ReadFile(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail) {
+	if m.ReadFileFunc != nil {
+		return m.ReadFileFunc(req)
+	}
+	return "", "", 0, 0, 0, 0, false, errors.NewInternalError("ReadFileFunc not implemented in mock")
+}
+
+func (m *mockFileOperationService) EditFile(req models.EditFileRequest) (filename string, linesModified int, newTotalLines int, fileCreated bool, err *models.ErrorDetail) {
+	if m.EditFileFunc != nil {
+		return m.EditFileFunc(req)
+	}
+	return "", 0, 0, false, errors.NewInternalError("EditFileFunc not implemented in mock")
+}
+
 
 func TestHTTPHandler_handleReadFile_Success(t *testing.T) {
 	mockService := &mockFileOperationService{
-		ReadFileFunc: func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
+		ReadFileFunc: func(req models.ReadFileRequest) (string, string, int, int, int, int, bool, *models.ErrorDetail) {
 			if req.Name == "test.txt" {
-				return &models.ReadFileResponse{Content: "hello world", TotalLines: 1}, nil
+				// content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool
+				return "hello world", req.Name, 1, req.StartLine, req.EndLine, 0, (req.StartLine != 0 || req.EndLine != 0), nil
 			}
-			return nil, errors.NewFileNotFoundError(req.Name, "read")
+			return "", req.Name, 0, 0, 0, -1, false, errors.NewFileNotFoundError(req.Name, "read")
 		},
 	}
-	// cfgMaxReqSizeMB is currently ignored by NewHTTPHandler, using default 50MB.
 	handler := NewHTTPHandler(mockService, 10)
-
 	server := httptest.NewServer(http.HandlerFunc(handler.handleReadFile))
 	defer server.Close()
 
@@ -69,22 +68,28 @@ func TestHTTPHandler_handleReadFile_Success(t *testing.T) {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, string(bodyBytes))
 	}
 
-	var readResp models.ReadFileResponse
-	if err := json.NewDecoder(resp.Body).Decode(&readResp); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
+	var mcpResp models.MCPToolResult
+	if err := json.NewDecoder(resp.Body).Decode(&mcpResp); err != nil {
+		t.Fatalf("Failed to decode MCPToolResult response: %v", err)
 	}
-	if readResp.Content != "hello world" {
-		t.Errorf("expected content 'hello world', got %q", readResp.Content)
+	if mcpResp.IsError {
+		t.Errorf("Expected IsError to be false, got true. Content: %s", mcpResp.Content[0].Text)
+	}
+	// formatHTTPReadFileResult(content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool)
+	expectedText := formatHTTPReadFileResult("hello world", "test.txt", 1, 0,0,0, false)
+	if len(mcpResp.Content) != 1 || mcpResp.Content[0].Text != expectedText {
+		t.Errorf("Expected content text %q, got %q", expectedText, mcpResp.Content[0].Text)
 	}
 }
 
 func TestHTTPHandler_handleReadFile_ServiceError(t *testing.T) {
 	mockService := &mockFileOperationService{
-		ReadFileFunc: func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
-			return nil, errors.NewFileNotFoundError(req.Name, "read")
+		ReadFileFunc: func(req models.ReadFileRequest) (string, string, int, int, int, int, bool, *models.ErrorDetail) {
+			return "", req.Name, 0, 0, 0, -1, false, errors.NewFileNotFoundError(req.Name, "read")
 		},
 	}
 	handler := NewHTTPHandler(mockService, 10)
@@ -100,18 +105,23 @@ func TestHTTPHandler_handleReadFile_ServiceError(t *testing.T) {
 		_ = resp.Body.Close()
 	}()
 
-	// File not found -> maps to 404
-	expectedStatus := http.StatusNotFound
-	if resp.StatusCode != expectedStatus {
-		t.Errorf("expected status %d, got %d", expectedStatus, resp.StatusCode)
+	// Service errors are now returned as HTTP 200 with IsError: true in MCPToolResult
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, string(bodyBytes))
 	}
 
-	var errResp models.ErrorResponse
-	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-		t.Fatalf("Failed to decode error response: %v", err)
+	var mcpResp models.MCPToolResult
+	if err := json.NewDecoder(resp.Body).Decode(&mcpResp); err != nil {
+		t.Fatalf("Failed to decode MCPToolResult error response: %v", err)
 	}
-	if errResp.Error.Code != errors.CodeFileSystemError { // As NewFileNotFoundError uses this code
-		t.Errorf("expected error code %d, got %d", errors.CodeFileSystemError, errResp.Error.Code)
+	if !mcpResp.IsError {
+		t.Error("Expected IsError to be true")
+	}
+	serviceErr := errors.NewFileNotFoundError("nonexistent.txt", "read")
+	expectedErrorText := formatHTTPToolError(serviceErr)
+	if len(mcpResp.Content) != 1 || mcpResp.Content[0].Text != expectedErrorText {
+		t.Errorf("Expected error text %q, got %q", expectedErrorText, mcpResp.Content[0].Text)
 	}
 }
 
@@ -194,11 +204,12 @@ func TestHTTPHandler_handleReadFile_WrongMethod(t *testing.T) {
 
 func TestHTTPHandler_handleEditFile_Success(t *testing.T) {
 	mockService := &mockFileOperationService{
-		EditFileFunc: func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail) {
+		EditFileFunc: func(req models.EditFileRequest) (string, int, int, bool, *models.ErrorDetail) {
 			if req.Name == "editme.txt" {
-				return &models.EditFileResponse{Success: true, NewTotalLines: 5, LinesModified: 1, FileCreated: false}, nil
+				// filename string, linesModified int, newTotalLines int, fileCreated bool
+				return req.Name, 1, 5, false, nil
 			}
-			return nil, errors.NewInternalError("mock edit error")
+			return "", 0, 0, false, errors.NewInternalError("mock edit error")
 		},
 	}
 	handler := NewHTTPHandler(mockService, 10)
@@ -215,21 +226,27 @@ func TestHTTPHandler_handleEditFile_Success(t *testing.T) {
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, string(bodyBytes))
 	}
-	var editResp models.EditFileResponse
-	if err := json.NewDecoder(resp.Body).Decode(&editResp); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
+	var mcpResp models.MCPToolResult
+	if err := json.NewDecoder(resp.Body).Decode(&mcpResp); err != nil {
+		t.Fatalf("Failed to decode MCPToolResult response: %v", err)
 	}
-	if !editResp.Success || editResp.NewTotalLines != 5 {
-		t.Errorf("unexpected edit response: %+v", editResp)
+	if mcpResp.IsError {
+		t.Errorf("Expected IsError to be false, got true. Content: %s", mcpResp.Content[0].Text)
+	}
+	expectedText := formatHTTPEditFileResult("editme.txt", 1, 5, false)
+	if len(mcpResp.Content) != 1 || mcpResp.Content[0].Text != expectedText {
+		t.Errorf("Expected content text %q, got %q", expectedText, mcpResp.Content[0].Text)
 	}
 }
 
 func TestHTTPHandler_handleEditFile_ServiceError(t *testing.T) {
+	serviceErrDetail := errors.NewInvalidParamsError("Invalid edit operation", nil)
 	mockService := &mockFileOperationService{
-		EditFileFunc: func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail) {
-			return nil, errors.NewInvalidParamsError("Invalid edit operation", nil)
+		EditFileFunc: func(req models.EditFileRequest) (string, int, int, bool, *models.ErrorDetail) {
+			return req.Name, 0, 0, false, serviceErrDetail
 		},
 	}
 	handler := NewHTTPHandler(mockService, 10)
@@ -245,15 +262,20 @@ func TestHTTPHandler_handleEditFile_ServiceError(t *testing.T) {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode != http.StatusBadRequest { // InvalidParams maps to 400
-		t.Errorf("expected status %d, got %d", http.StatusBadRequest, resp.StatusCode)
+	if resp.StatusCode != http.StatusOK { // Service errors now return 200 OK with MCPToolResult.IsError = true
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, resp.StatusCode, string(bodyBytes))
 	}
-	var errResp models.ErrorResponse
-	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
-		t.Fatalf("Failed to decode error response: %v", err)
+	var mcpResp models.MCPToolResult
+	if err := json.NewDecoder(resp.Body).Decode(&mcpResp); err != nil {
+		t.Fatalf("Failed to decode MCPToolResult error response: %v", err)
 	}
-	if errResp.Error.Code != errors.CodeInvalidParams {
-		t.Errorf("expected error code %d, got %d", errors.CodeInvalidParams, errResp.Error.Code)
+	if !mcpResp.IsError {
+		t.Error("Expected IsError to be true")
+	}
+	expectedErrorText := formatHTTPToolError(serviceErrDetail)
+	if len(mcpResp.Content) != 1 || mcpResp.Content[0].Text != expectedErrorText {
+		t.Errorf("Expected error text %q, got %q", expectedErrorText, mcpResp.Content[0].Text)
 	}
 }
 
@@ -285,50 +307,89 @@ func TestHTTPHandler_HealthCheck(t *testing.T) {
 func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 	// Provide a minimal mock service, even if its methods aren't deeply tested here.
 	mockService := &mockFileOperationService{
-		ReadFileFunc: func(req models.ReadFileRequest) (*models.ReadFileResponse, *models.ErrorDetail) {
-			// Minimal implementation for route testing: return a known error or simple success
-			return nil, errors.NewInvalidParamsError("test read", nil) // Or return a simple success
+		ReadFileFunc: func(req models.ReadFileRequest) (string, string, int, int, int, int, bool, *models.ErrorDetail) {
+			// For ReadFile, the service expects a "name" field. Empty JSON "{}" will lead to service error if not caught by decode.
+			// However, the HTTP handler decodes into models.ReadFileRequest first. If "name" is missing, it's a bad request.
+			// If "name" is present but file not found by service, then service error.
+			// This mock will simulate a service error if called, to show the path.
+			return "", req.Name, 0, 0,0,0,false, errors.NewInvalidParamsError("test read error from mock", nil)
 		},
-		EditFileFunc: func(req models.EditFileRequest) (*models.EditFileResponse, *models.ErrorDetail) {
-			return nil, errors.NewInvalidParamsError("test edit", nil)
+		EditFileFunc: func(req models.EditFileRequest) (string, int, int, bool, *models.ErrorDetail) {
+			return req.Name, 0,0,false, errors.NewInvalidParamsError("test edit error from mock", nil)
 		},
-		ListFilesFunc: func(req models.ListFilesRequest) (*models.ListFilesResponse, *models.ErrorDetail) {
-			// Minimal implementation for ListFiles as well for completeness
-			return &models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "/testdir"}, nil
+		ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
+			return []models.FileInfo{}, "/testdir", nil // Successful list files
 		},
 	}
-	// Use 1MB as a reasonable default for max request size in this test, instead of 0.
-	// 0MB would cause all requests, even empty JSON, to be "Payload Too Large" (413).
 	handler := NewHTTPHandler(mockService, 1)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
-	// Test /read_file
-	// Provide an empty JSON body to avoid nil body issues with json.Decoder
-	reqReadFile, _ := http.NewRequest("POST", "/read_file", bytes.NewBufferString("{}"))
-	reqReadFile.Header.Set("Content-Type", "application/json") // Added Content-Type
-	rrReadFile := httptest.NewRecorder()
-	mux.ServeHTTP(rrReadFile, reqReadFile)
-	// We expect a BadRequest (400) because the empty JSON "{}" is likely not a valid ReadFileRequest
-	// (e.g. missing "name" field). The key is it's not 404 or a panic.
-	if rrReadFile.Code != http.StatusBadRequest {
-		t.Errorf("/read_file: expected status %d (due to empty/invalid JSON), got %d", http.StatusBadRequest, rrReadFile.Code)
+	// Test /list_files (success)
+	reqListFiles, _ := http.NewRequest("POST", "/list_files", bytes.NewBufferString("{}")) // Empty JSON object for ListFiles
+	reqListFiles.Header.Set("Content-Type", "application/json")
+	rrListFiles := httptest.NewRecorder()
+	mux.ServeHTTP(rrListFiles, reqListFiles)
+	if rrListFiles.Code != http.StatusOK {
+		t.Errorf("/list_files: expected status %d, got %d. Body: %s", http.StatusOK, rrListFiles.Code, rrListFiles.Body.String())
+	}
+	var mcpListResp models.MCPToolResult
+	if err := json.NewDecoder(rrListFiles.Body).Decode(&mcpListResp); err != nil {
+		t.Fatalf("/list_files: Failed to decode MCPToolResult: %v", err)
+	}
+	if mcpListResp.IsError {
+		t.Errorf("/list_files: expected IsError false, got true. Content: %s", mcpListResp.Content[0].Text)
+	}
+	expectedListText := formatHTTPListFilesResult([]models.FileInfo{}, "/testdir")
+	if len(mcpListResp.Content) != 1 || mcpListResp.Content[0].Text != expectedListText {
+		t.Errorf("/list_files: expected content text %q, got %q", expectedListText, mcpListResp.Content[0].Text)
 	}
 
-	// Test /edit_file
+
+	// Test /read_file (expecting bad request from handler due to missing "name" in "{}")
+	reqReadFile, _ := http.NewRequest("POST", "/read_file", bytes.NewBufferString("{}"))
+	reqReadFile.Header.Set("Content-Type", "application/json")
+	rrReadFile := httptest.NewRecorder()
+	mux.ServeHTTP(rrReadFile, reqReadFile)
+	// The ReadFileRequest requires a "name". Sending "{}" will fail model validation at service level,
+	// or if strict decoding is used in handler before service call (which it is).
+	// The service call `h.service.ReadFile(req)` will receive a req with empty Name.
+	// The service's `resolveAndValidatePath` will return an error for empty filename.
+	// This service error will then be wrapped into MCPToolResult with IsError:true.
+	if rrReadFile.Code != http.StatusOK { // Should be 200 OK, with MCPToolResult.IsError=true
+		t.Errorf("/read_file: expected status %d, got %d. Body: %s", http.StatusOK, rrReadFile.Code, rrReadFile.Body.String())
+	}
+	var mcpReadResp models.MCPToolResult
+	if err := json.NewDecoder(rrReadFile.Body).Decode(&mcpReadResp); err != nil {
+		t.Fatalf("/read_file: Failed to decode MCPToolResult: %v", err)
+	}
+	if !mcpReadResp.IsError {
+		t.Errorf("/read_file: expected IsError true for empty JSON, got false. Content: %s", mcpReadResp.Content[0].Text)
+	}
+	// Check for specific error message related to empty filename might be too brittle.
+	// The key is that it's an error reported via MCPToolResult.
+
+	// Test /edit_file (expecting bad request from handler due to missing "name" in "{}")
 	reqEditFile, _ := http.NewRequest("POST", "/edit_file", bytes.NewBufferString("{}"))
-	reqEditFile.Header.Set("Content-Type", "application/json") // Added Content-Type
+	reqEditFile.Header.Set("Content-Type", "application/json")
 	rrEditFile := httptest.NewRecorder()
 	mux.ServeHTTP(rrEditFile, reqEditFile)
-	if rrEditFile.Code != http.StatusBadRequest {
-		t.Errorf("/edit_file: expected status %d (due to empty/invalid JSON), got %d", http.StatusBadRequest, rrEditFile.Code)
+	if rrEditFile.Code != http.StatusOK { // Should be 200 OK, with MCPToolResult.IsError=true
+		t.Errorf("/edit_file: expected status %d, got %d. Body: %s", http.StatusOK, rrEditFile.Code, rrEditFile.Body.String())
+	}
+	var mcpEditResp models.MCPToolResult
+	if err := json.NewDecoder(rrEditFile.Body).Decode(&mcpEditResp); err != nil {
+		t.Fatalf("/edit_file: Failed to decode MCPToolResult: %v", err)
+	}
+	if !mcpEditResp.IsError {
+		t.Errorf("/edit_file: expected IsError true for empty JSON, got false. Content: %s", mcpEditResp.Content[0].Text)
 	}
 
 	// Test /health
-	reqHealth, _ := http.NewRequest("GET", "/health", bytes.NewBufferString("")) // GET requests typically don't have a body, but providing empty string is safe.
+	reqHealth, _ := http.NewRequest("GET", "/health", nil) // GET requests typically don't have a body
 	rrHealth := httptest.NewRecorder()
 	mux.ServeHTTP(rrHealth, reqHealth)
-	if rrHealth.Code != http.StatusOK { // Health should give 200
+	if rrHealth.Code != http.StatusOK {
 		t.Errorf("/health route not registered or not handled correctly (status %d)", rrHealth.Code)
 	}
 }

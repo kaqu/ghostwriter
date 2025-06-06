@@ -5,6 +5,7 @@ import (
 	"file-editor-server/internal/config"
 	"file-editor-server/internal/filesystem"
 	"file-editor-server/internal/lock"
+	"file-editor-server/internal/mcp" // Added mcp import
 	"file-editor-server/internal/service"
 	"file-editor-server/internal/transport"
 	"log"
@@ -120,7 +121,8 @@ func main() {
 	case "stdio":
 		log.Println("Initializing STDIN/STDOUT JSON-RPC transport...")
 		go func() {
-			stdioHandler := transport.NewStdioHandler(fileService)
+			mcpProcessor := mcp.NewMCPProcessor(fileService) // Create MCPProcessor
+			stdioHandler := transport.NewStdioHandler(mcpProcessor) // Pass processor to StdioHandler
 			if err := stdioHandler.Start(os.Stdin, os.Stdout); err != nil {
 				log.Printf("STDIO handler error: %v\n", err)
 				serverDoneChan <- err // Stdio handler error
