@@ -6,6 +6,7 @@ on:
       - '*'
     tags:
       - 'v*' # Trigger on tags like v1.0, v0.1.0, etc.
+  pull_request:
 
 jobs:
   lint:
