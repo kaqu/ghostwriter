@@ -11,6 +11,7 @@
 The File Editing Server SHALL implement a high-performance binary providing text file manipulation capabilities for LLM and AI agents. The system MUST operate exclusively within a single designated folder path and SHALL provide flat file access using filename-only references.
 
 **Included in Implementation:**
+
 - Single binary executable with command-line argument configuration
 - MCP protocol server with two transport options: HTTP OR stdio JSON-RPC communication
 - Three MCP tools: list_files, read_file and edit_file with complete functionality
@@ -24,6 +25,7 @@ The File Editing Server SHALL implement a high-performance binary providing text
 - Comprehensive error handling for all file system operations
 
 **Excluded from Implementation:**
+
 - File operations outside designated folder boundaries
 - Binary file handling or non-text file processing
 - Directory traversal, nested folder support, or hierarchical access
@@ -39,30 +41,37 @@ The File Editing Server SHALL implement a high-performance binary providing text
 **Programming Language:** Compiled language with strong typing (Go 1.21+, Rust 1.70+, or Zig 0.11+)  
 **Standard Libraries:** HTTP server, JSON processing, file I/O, concurrency primitives, string manipulation  
 **Target Platforms:** Cross-compiled binaries for:
+
 - Linux (x86_64, aarch64)
-- macOS (x86_64, aarch64) 
+- Linux (x86_64, arm64)
+- macOS (x86_64, aarch64)
+- macOS (x86_64, arm64)
 - Windows (x86_64)
-**File System Requirements:** POSIX-compliant or Windows NTFS with UTF-8 support  
-**Text Encoding:** UTF-8 exclusively with validation  
-**Memory Model:** Stack-allocated where possible, minimal heap usage
+  **File System Requirements:** POSIX-compliant or Windows NTFS with UTF-8 support  
+  **Text Encoding:** UTF-8 exclusively with validation  
+  **Memory Model:** Stack-allocated where possible, minimal heap usage
 
 ### 1.3 Command Line Interface Specification
 
 **Binary Execution Pattern:**
+
 ```
 file-editor --dir=<path> [--transport=<type>] [--port=<number>] [options]
 ```
 
 **Required Arguments:**
+
 - `--dir=<path>`: Working directory path (MUST exist and be writable)
 
 **Optional Arguments:**
+
 - `--transport=<type>`: Communication method (http|stdio) [default: http]
 - `--port=<number>`: HTTP port number [default: 8080, range: 1024-65535]
 - `--max-size=<mb>`: Maximum file and request size in megabytes [default: 10, range: 1-100]
 - `--timeout=<seconds>`: Operation timeout in seconds [default: 10, range: 1-300]
 
 **Validation Requirements:**
+
 - Working directory MUST exist before server start
 - Working directory MUST be writable by process user
 - Port number MUST be available for binding when HTTP transport selected
@@ -186,16 +195,18 @@ END FUNCTION
 ```
 
 **Error Response Specifications:**
-- File not found: Tool result with `isError: true`, message "Error: File '{filename}' not found"
-- Invalid line range: Tool result with `isError: true`, message "Error: Invalid line range: start {start} > end {end}"
-- Permission denied: Tool result with `isError: true`, message "Error: Permission denied accessing '{filename}'"
-- File too large: Tool result with `isError: true`, message "Error: File size {size}MB exceeds maximum limit {max}MB"
-- Invalid UTF-8: Tool result with `isError: true`, message "Error: File contains invalid UTF-8 encoding"
+
+- File not found: Tool result with `isError: true`, message “Error: File ‘{filename}’ not found”
+- Invalid line range: Tool result with `isError: true`, message “Error: Invalid line range: start {start} > end {end}”
+- Permission denied: Tool result with `isError: true`, message “Error: Permission denied accessing ‘{filename}’”
+- File too large: Tool result with `isError: true`, message “Error: File size {size}MB exceeds maximum limit {max}MB”
+- Invalid UTF-8: Tool result with `isError: true`, message “Error: File contains invalid UTF-8 encoding”
 
 **Acceptance Criteria:**
-- GIVEN a file "test.txt" exists with content "line1\nline2\nline3" WHEN read_file is called with name="test.txt" THEN content="line1\nline2\nline3" AND total_lines=3
+
+- GIVEN a file “test.txt” exists with content “line1\nline2\nline3” WHEN read_file is called with name=“test.txt” THEN content=“line1\nline2\nline3” AND total_lines=3
 - GIVEN a file exists WHEN read_file is called with start_line=2, end_line=3 THEN only lines 2-3 are returned
-- GIVEN a file "missing.txt" does not exist WHEN read_file is called THEN error code -32001 is returned
+- GIVEN a file “missing.txt” does not exist WHEN read_file is called THEN error code -32001 is returned
 - GIVEN start_line=5, end_line=3 WHEN read_file is called THEN error code -32602 is returned
 - GIVEN a file larger than max_file_size WHEN read_file is called THEN error code -32001 is returned
 
@@ -280,11 +291,13 @@ END FUNCTION
 ```
 
 **Error Response Specifications:**
-- Directory not accessible: Tool result with `isError: true`, message "Error: Cannot access working directory"
-- Filesystem error: Tool result with `isError: true`, message "Error: Filesystem error during directory listing"
+
+- Directory not accessible: Tool result with `isError: true`, message “Error: Cannot access working directory”
+- Filesystem error: Tool result with `isError: true`, message “Error: Filesystem error during directory listing”
 
 **Acceptance Criteria:**
-- GIVEN working directory contains files ["a.txt", "b.txt"] WHEN list_files is called THEN both files are returned in sorted order with modification time and line counts
+
+- GIVEN working directory contains files [“a.txt”, “b.txt”] WHEN list_files is called THEN both files are returned in sorted order with modification time and line counts
 - GIVEN working directory is empty WHEN list_files is called THEN empty files list with total_count=0 is returned
 - GIVEN working directory contains subdirectories WHEN list_files is called THEN only files are returned, not directories
 - GIVEN working directory contains hidden files WHEN list_files is called THEN hidden files are excluded from results
@@ -419,9 +432,10 @@ END FUNCTION
 ```
 
 **Acceptance Criteria:**
-- GIVEN a file exists WHEN edit_file is called with line=2, operation="replace", content="new line" THEN line 2 is replaced with "new line"
-- GIVEN a file with 5 lines WHEN edit_file is called with line=3, operation="insert", content="inserted" THEN new line is inserted at position 3
-- GIVEN a file exists WHEN edit_file is called with line=2, operation="delete" THEN line 2 is removed
+
+- GIVEN a file exists WHEN edit_file is called with line=2, operation=“replace”, content=“new line” THEN line 2 is replaced with “new line”
+- GIVEN a file with 5 lines WHEN edit_file is called with line=3, operation=“insert”, content=“inserted” THEN new line is inserted at position 3
+- GIVEN a file exists WHEN edit_file is called with line=2, operation=“delete” THEN line 2 is removed
 - GIVEN file does not exist WHEN edit_file is called with create_if_missing=true THEN new file is created
 - GIVEN multiple edits targeting different lines WHEN edit_file is called THEN all edits are applied successfully in single operation
 
@@ -456,12 +470,14 @@ END FUNCTION
 ```
 
 **Filesystem Locking Benefits:**
+
 - Multiple server instances can coordinate access to same files
 - OS handles lock cleanup on process termination
 - No artificial concurrency limits - filesystem manages queuing
 - Cross-process synchronization without shared memory
 
 **State Transition Requirements:**
+
 - File states: [NonExistent, Readable, Locked, Modified, Error]
 - NonExistent → Readable (file discovery)
 - Readable → Locked (operation start)
@@ -483,10 +499,12 @@ END FUNCTION
 **HTTP Method:** POST  
 **Endpoint Path:** `/list_files`  
 **Request Headers:**
+
 - `Content-Type: application/json; charset=utf-8` (REQUIRED)
 - `Accept: application/json` (RECOMMENDED)
 
 **Request Schema:**
+
 ```json
 {
   "type": "object",
@@ -496,6 +514,7 @@ END FUNCTION
 ```
 
 **Success Response (HTTP 200):**
+
 ```json
 {
   "type": "object",
@@ -544,10 +563,12 @@ END FUNCTION
 **HTTP Method:** POST  
 **Endpoint Path:** `/read_file`  
 **Request Headers:**
+
 - `Content-Type: application/json; charset=utf-8` (REQUIRED)
 - `Accept: application/json` (RECOMMENDED)
 
 **Request Schema:**
+
 ```json
 {
   "type": "object",
@@ -576,6 +597,7 @@ END FUNCTION
 ```
 
 **Success Response (HTTP 200):**
+
 ```json
 {
   "type": "object",
@@ -610,6 +632,7 @@ END FUNCTION
 **Request Headers:** Same as read_file endpoint
 
 **Request Schema:**
+
 ```json
 {
   "type": "object",
@@ -663,6 +686,7 @@ END FUNCTION
 ```
 
 **Success Response (HTTP 200):**
+
 ```json
 {
   "type": "object",
@@ -694,15 +718,17 @@ END FUNCTION
 
 ### 3.2 stdio JSON-RPC Specification
 
-**Protocol Version:** JSON-RPC 2.0 (MUST include "jsonrpc": "2.0")  
+**Protocol Version:** JSON-RPC 2.0 (MUST include “jsonrpc”: “2.0”)  
 **Transport:** stdin/stdout with line-delimited JSON messages  
 **Character Encoding:** UTF-8
 
 **Method Names:**
+
 - `read_file` (parameters match HTTP request schema)
 - `edit_file` (parameters match HTTP request schema)
 
 **Request Format:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -717,6 +743,7 @@ END FUNCTION
 ```
 
 **Success Response Format:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -755,6 +782,7 @@ END FUNCTION
 ```
 
 **Tool Error Categories:**
+
 - File not found: `"Error: File '{filename}' not found"`
 - Invalid line range: `"Error: Invalid line range: start {start} > end {end}"`
 - Permission denied: `"Error: Permission denied accessing '{filename}'"`
@@ -783,8 +811,9 @@ END FUNCTION
 ```
 
 **MCP Error Code Mappings:**
+
 - `-32700`: Parse error (invalid JSON)
-- `-32600`: Invalid request (missing required MCP fields)  
+- `-32600`: Invalid request (missing required MCP fields)
 - `-32601`: Method not found (invalid MCP method name)
 - `-32602`: Invalid params (tool argument validation failure)
 - `-32603`: Internal error (unexpected server error)
@@ -806,6 +835,7 @@ END FUNCTION
 #### 3.4.1 list_files Result Format
 
 **Success Result:**
+
 ```json
 {
   "content": [
@@ -819,6 +849,7 @@ END FUNCTION
 ```
 
 **Structured Data Format (within text):**
+
 ```
 Files in directory:
 
@@ -832,6 +863,7 @@ Total files: {count}
 #### 3.4.2 read_file Result Format
 
 **Success Result (entire file):**
+
 ```json
 {
   "content": [
@@ -845,6 +877,7 @@ Total files: {count}
 ```
 
 **Success Result (line range):**
+
 ```json
 {
   "content": [
@@ -858,6 +891,7 @@ Total files: {count}
 ```
 
 **Structured Format:**
+
 ```
 File: {filename} (lines {start}-{end} of {total} total)
 
@@ -865,6 +899,7 @@ File: {filename} (lines {start}-{end} of {total} total)
 ```
 
 Or for entire file:
+
 ```
 File: {filename} ({total} lines)
 
@@ -874,6 +909,7 @@ File: {filename} ({total} lines)
 #### 3.4.3 edit_file Result Format
 
 **Success Result:**
+
 ```json
 {
   "content": [
@@ -887,6 +923,7 @@ File: {filename} ({total} lines)
 ```
 
 **Success Result (new file):**
+
 ```json
 {
   "content": [
@@ -900,6 +937,7 @@ File: {filename} ({total} lines)
 ```
 
 **Structured Format:**
+
 ```
 File edited successfully: {filename}
 Lines modified: {lines_modified}
@@ -910,6 +948,7 @@ File created: {true|false}
 #### 3.4.4 Error Result Format
 
 **Tool Error Result:**
+
 ```json
 {
   "content": [
@@ -923,11 +962,13 @@ File created: {true|false}
 ```
 
 **Error Format:**
+
 ```
 Error: {error_message}
 ```
 
 **HTTP Status Codes (HTTP Transport Only):**
+
 - `200`: Success (MCP response in body, check result.isError for tool errors)
 - `400`: Bad Request (invalid JSON, malformed MCP request)
 - `405`: Method Not Allowed (non-POST request)
@@ -939,6 +980,7 @@ Error: {error_message}
 ### 4.1 Performance Targets
 
 **Response Time Requirements:**
+
 - File reading operations MUST complete within 50 milliseconds for files up to 1MB
 - File editing operations MUST complete within 100 milliseconds for files up to 1MB
 - File listing operations MUST complete within 20 milliseconds for directories with up to 1000 files
@@ -946,18 +988,21 @@ Error: {error_message}
 - Graceful shutdown MUST complete within 2000 milliseconds
 
 **Memory Usage Requirements:**
+
 - Idle server memory usage MUST NOT exceed 5MB
 - Memory usage per request MUST NOT exceed file size + 1MB overhead
 - Server MUST NOT exhibit memory leaks during normal operation
 - Memory usage SHOULD return to idle levels within 10 seconds after request completion
 
 **Concurrent Operation Requirements:**
+
 - Server MUST handle concurrent file operations without artificial limits
 - Filesystem-level locking MUST prevent race conditions with zero data corruption incidents
 - Lock acquisition timeout MUST be 30 seconds maximum
 - Multiple server instances MUST coordinate access through filesystem locks
 
 **Binary Size Requirements:**
+
 - Compiled binary size MUST be under 10MB for each target platform
 - Binary MUST be statically linked with no external runtime dependencies
 - Cross-platform binaries MUST be functionally identical
@@ -965,808 +1010,8 @@ Error: {error_message}
 ### 4.2 Security Requirements
 
 **Input Validation Requirements:**
-- File names MUST be validated against regex pattern `^[a-zA-Z0-9._-]+# File Editing Server - Complete Implementation Specification
 
-**Version:** 1.0  
-**Date:** June 4, 2025  
-**Document Type:** Single-File Implementation Specification
-
-## 1. System Overview & Scope
-
-### 1.1 Implementation Boundaries
-
-The File Editing Server SHALL implement a high-performance binary providing text file manipulation capabilities for LLM and AI agents. The system MUST operate exclusively within a single designated folder path and SHALL provide flat file access using filename-only references.
-
-**Included in Implementation:**
-- Single binary executable with command-line argument configuration
-- Two transport options: HTTP REST API OR stdio JSON-RPC communication
-- Three file operations: list_files, read_file and edit_file with complete functionality
-- Text file reading with optional line range selection capabilities
-- Text file editing via line-based diff operations and append functionality
-- New file creation within designated folder boundaries
-- Flat file storage abstraction using filename-only references
-- Cross-platform file system operations supporting Windows, macOS, Linux
-- UTF-8 text encoding support with validation
-- Concurrent request handling with filesystem-level locking mechanisms
-- Comprehensive error handling for all file system operations
-
-**Excluded from Implementation:**
-- File operations outside designated folder boundaries
-- Binary file handling or non-text file processing
-- Directory traversal, nested folder support, or hierarchical access
-- File permissions modification or ownership changes
-- Version control integration or file history tracking
-- Backup, recovery, or rollback mechanisms
-- User authentication or authorization beyond transport security
-- File watching, real-time notifications, or event streaming
-- Configuration files or complex setup procedures
-
-### 1.2 Platform and Environment Requirements
-
-**Programming Language:** Compiled language with strong typing (Go 1.21+, Rust 1.70+, or Zig 0.11+)  
-**Standard Libraries:** HTTP server, JSON processing, file I/O, concurrency primitives, string manipulation  
-**Target Platforms:** Cross-compiled binaries for:
-- Linux (x86_64, aarch64)
-- macOS (x86_64, aarch64) 
-- Windows (x86_64)
-**File System Requirements:** POSIX-compliant or Windows NTFS with UTF-8 support  
-**Text Encoding:** UTF-8 exclusively with validation  
-**Memory Model:** Stack-allocated where possible, minimal heap usage
-
-### 1.3 Command Line Interface Specification
-
-**Binary Execution Pattern:**
-```
-file-editor --dir=<path> [--transport=<type>] [--port=<number>] [options]
-```
-
-**Required Arguments:**
-- `--dir=<path>`: Working directory path (MUST exist and be writable)
-
-**Optional Arguments:**
-- `--transport=<type>`: Communication method (http|stdio) [default: http]
-- `--port=<number>`: HTTP port number [default: 8080, range: 1024-65535]
-- `--max-size=<mb>`: Maximum file and request size in megabytes [default: 10, range: 1-100]
-- `--timeout=<seconds>`: Operation timeout in seconds [default: 10, range: 1-300]
-
-**Validation Requirements:**
-- Working directory MUST exist before server start
-- Working directory MUST be writable by process user
-- Port number MUST be available for binding when HTTP transport selected
-- All numeric parameters MUST be within specified ranges
-- Invalid arguments MUST cause immediate exit with error code 1
-
-### 1.4 Technical Terminology Definitions
-
-- **Transport Protocol:** Communication mechanism (HTTP REST or stdio JSON-RPC)
-- **Flat File Access:** File operations using filename without path components
-- **Line-Based Diff:** Modification targeting specific line numbers with operation type
-- **Working Directory:** Single designated folder containing all accessible files
-- **Line Range:** Inclusive start and end line numbers for partial reading
-- **Atomic Operation:** File modification completing entirely or failing entirely
-- **File Lock:** Exclusive access mechanism preventing concurrent modifications
-
-## 2. Functional Implementation Requirements
-
-### 2.1 File Reading Operations
-
-**User Story:** As an AI agent, I MUST read file contents with optional line range specification to analyze and process text files efficiently without loading unnecessary data.
-
-**Business Logic Decision Tree:**
-
-```pseudocode
-FUNCTION read_file(filename, start_line, end_line):
-    // Input validation branch
-    IF filename is empty OR contains path separators THEN
-        RETURN error "Invalid filename format"
-    END IF
-    
-    IF start_line < 1 OR end_line < 1 THEN
-        RETURN error "Line numbers must be positive integers"
-    END IF
-    
-    IF start_line > end_line THEN
-        RETURN error "Start line cannot exceed end line"
-    END IF
-    
-    // File access branch
-    file_path = join(working_directory, filename)
-    
-    IF NOT file_exists(file_path) THEN
-        RETURN error "File not found"
-    END IF
-    
-    file_size = get_file_size(file_path)
-    IF file_size > max_file_size_bytes THEN
-        RETURN error "File exceeds maximum size limit"
-    END IF
-    
-    // Content processing branch
-    file_content = read_file_bytes(file_path)
-    IF NOT is_valid_utf8(file_content) THEN
-        RETURN error "File contains invalid UTF-8 encoding"
-    END IF
-    
-    lines = split_lines(file_content)
-    total_line_count = count(lines)
-    
-    // Range selection branch
-    IF start_line IS NULL AND end_line IS NULL THEN
-        selected_lines = lines
-    ELSE IF start_line IS NOT NULL AND end_line IS NULL THEN
-        IF start_line > total_line_count THEN
-            RETURN error "Start line exceeds file length"
-        END IF
-        selected_lines = lines[start_line-1 : total_line_count]
-    ELSE IF start_line IS NULL AND end_line IS NOT NULL THEN
-        IF end_line > total_line_count THEN
-            end_line = total_line_count
-        END IF
-        selected_lines = lines[0 : end_line]
-    ELSE
-        IF start_line > total_line_count THEN
-            RETURN error "Start line exceeds file length"
-        END IF
-        actual_end = MIN(end_line, total_line_count)
-        selected_lines = lines[start_line-1 : actual_end]
-    END IF
-    
-    result_content = join_lines(selected_lines)
-    
-    RETURN {
-        content: result_content,
-        total_lines: total_line_count,
-        range_requested: {start_line, end_line}
-    }
-END FUNCTION
-```
-
-**Data Processing Algorithm:**
-
-```pseudocode
-FUNCTION split_lines(file_content):
-    // Handle different line ending types
-    normalized_content = replace(file_content, "\r\n", "\n")
-    normalized_content = replace(normalized_content, "\r", "\n")
-    
-    lines = split(normalized_content, "\n")
-    
-    // Remove trailing empty line if file ends with newline
-    IF length(lines) > 0 AND lines[last_index] = "" THEN
-        lines = lines[0 : last_index]
-    END IF
-    
-    RETURN lines
-END FUNCTION
-```
-
-**Error Response Specifications:**
-- File not found: Error code -32001, HTTP status 404, message "File '{filename}' not found"
-- Invalid line range: Error code -32602, HTTP status 400, message "Invalid line range: start {start} > end {end}"
-- Permission denied: Error code -32001, HTTP status 403, message "Permission denied accessing '{filename}'"
-- File too large: Error code -32001, HTTP status 413, message "File size {size}MB exceeds maximum limit {max}MB"
-- Invalid UTF-8: Error code -32001, HTTP status 400, message "File contains invalid UTF-8 encoding"
-
-**Acceptance Criteria:**
-- GIVEN a file "test.txt" exists with content "line1\nline2\nline3" WHEN read_file is called with name="test.txt" THEN content="line1\nline2\nline3" AND total_lines=3
-- GIVEN a file exists WHEN read_file is called with start_line=2, end_line=3 THEN only lines 2-3 are returned
-- GIVEN a file "missing.txt" does not exist WHEN read_file is called THEN error code -32001 is returned
-- GIVEN start_line=5, end_line=3 WHEN read_file is called THEN error code -32602 is returned
-- GIVEN a file larger than max_file_size WHEN read_file is called THEN error code -32001 is returned
-
-### 2.2 File Listing Operations
-
-**User Story:** As an AI agent, I MUST list all available files in the working directory to discover which files can be read or edited.
-
-**Business Logic Decision Tree:**
-
-```pseudocode
-FUNCTION list_files():
-    // Directory access validation
-    IF NOT can_read_directory(working_directory) THEN
-        RETURN error "Cannot access working directory"
-    END IF
-    
-    // File enumeration
-    all_entries = get_directory_entries(working_directory)
-    file_list = []
-    
-    FOR each entry in all_entries DO
-        IF entry.is_file AND NOT entry.is_hidden THEN
-            file_info = {
-                name: entry.filename,
-                size: entry.file_size,
-                modified: entry.last_modified_time,
-                readable: can_read_file(entry.path),
-                writable: can_write_file(entry.path)
-            }
-            file_list.append(file_info)
-        END IF
-    END FOR
-    
-    // Sort by filename for consistent ordering
-    sorted_files = sort_by_filename(file_list)
-    
-    RETURN {
-        files: sorted_files,
-        total_count: count(sorted_files),
-        directory: working_directory
-    }
-END FUNCTION
-```
-
-**File Information Algorithm:**
-
-```pseudocode
-FUNCTION get_file_metadata(file_path):
-    IF NOT file_exists(file_path) THEN
-        RETURN error "File not found"
-    END IF
-    
-    file_stats = get_file_stats(file_path)
-    
-    RETURN {
-        size_bytes: file_stats.size,
-        modified_timestamp: file_stats.modified_time,
-        readable: test_file_read_access(file_path),
-        writable: test_file_write_access(file_path),
-        is_text_file: detect_text_file(file_path)
-    }
-END FUNCTION
-```
-
-**Error Response Specifications:**
-- Directory not accessible: Error code -32001, HTTP status 403, message "Cannot access working directory"
-- Filesystem error: Error code -32001, HTTP status 500, message "Filesystem error during directory listing"
-
-**Acceptance Criteria:**
-- GIVEN working directory contains files ["a.txt", "b.txt"] WHEN list_files is called THEN both files are returned in sorted order
-- GIVEN working directory is empty WHEN list_files is called THEN empty files array with total_count=0 is returned
-- GIVEN working directory contains subdirectories WHEN list_files is called THEN only files are returned, not directories
-- GIVEN working directory is not readable WHEN list_files is called THEN error code -32001 is returned
-
-### 2.3 File Editing Operations
-
-**User Story:** As an AI agent, I MUST edit files using line-based diff operations and append functionality to modify text content precisely while maintaining data integrity.
-
-**Business Logic Decision Tree:**
-
-```pseudocode
-FUNCTION edit_file(filename, edits_array, append_content, create_if_missing):
-    // Input validation branch
-    IF filename is empty OR contains path separators THEN
-        RETURN error "Invalid filename format"
-    END IF
-    
-    FOR each edit in edits_array DO
-        IF edit.line < 1 THEN
-            RETURN error "Line numbers must be positive integers"
-        END IF
-        IF edit.operation NOT IN ["replace", "insert", "delete"] THEN
-            RETURN error "Invalid edit operation"
-        END IF
-        IF edit.operation = "delete" AND edit.content IS NOT NULL THEN
-            RETURN error "Delete operation cannot specify content"
-        END IF
-    END FOR
-    
-    // File existence handling branch
-    file_path = join(working_directory, filename)
-    file_exists = check_file_exists(file_path)
-    
-    IF NOT file_exists AND NOT create_if_missing THEN
-        RETURN error "File not found and create_if_missing is false"
-    END IF
-    
-    // Acquire exclusive file lock
-    acquire_file_lock(filename)
-    TRY
-        // Content initialization branch
-        IF file_exists THEN
-            file_content = read_file_bytes(file_path)
-            IF NOT is_valid_utf8(file_content) THEN
-                RETURN error "File contains invalid UTF-8 encoding"
-            END IF
-            lines = split_lines(file_content)
-            file_created = false
-        ELSE
-            lines = empty_array()
-            file_created = true
-        END IF
-        
-        original_line_count = count(lines)
-        
-        // Edit processing branch (reverse order to maintain line stability)
-        sorted_edits = sort_by_line_number_descending(edits_array)
-        
-        FOR each edit in sorted_edits DO
-            result = apply_line_edit(lines, edit)
-            IF result is error THEN
-                RETURN result
-            END IF
-        END FOR
-        
-        // Append processing branch
-        IF append_content IS NOT NULL THEN
-            append_lines = split_lines(append_content)
-            lines = concatenate(lines, append_lines)
-        END IF
-        
-        // Atomic write operation
-        final_content = join_lines_with_newlines(lines)
-        write_result = write_file_atomic(file_path, final_content)
-        IF write_result is error THEN
-            RETURN write_result
-        END IF
-        
-        RETURN {
-            success: true,
-            lines_modified: abs(count(lines) - original_line_count),
-            file_created: file_created,
-            new_total_lines: count(lines)
-        }
-    FINALLY
-        release_file_lock(filename)
-    END TRY
-END FUNCTION
-```
-
-**Line Edit Processing Algorithm:**
-
-```pseudocode
-FUNCTION apply_line_edit(lines_array, edit):
-    line_index = edit.line - 1  // Convert to zero-based indexing
-    line_count = count(lines_array)
-    
-    SWITCH edit.operation:
-        CASE "replace":
-            IF line_index < 0 OR line_index >= line_count THEN
-                RETURN error "Line {edit.line} out of range for replace operation"
-            END IF
-            lines_array[line_index] = edit.content
-            
-        CASE "insert":
-            IF line_index < 0 OR line_index > line_count THEN
-                RETURN error "Line {edit.line} out of range for insert operation"
-            END IF
-            insert_at_position(lines_array, line_index, edit.content)
-            
-        CASE "delete":
-            IF line_index < 0 OR line_index >= line_count THEN
-                RETURN error "Line {edit.line} out of range for delete operation"
-            END IF
-            remove_at_position(lines_array, line_index)
-            
-        DEFAULT:
-            RETURN error "Unknown edit operation: {edit.operation}"
-    END SWITCH
-    
-    RETURN success
-END FUNCTION
-```
-
-**Atomic Write Implementation:**
-
-```pseudocode
-FUNCTION write_file_atomic(file_path, content):
-    temp_path = file_path + ".tmp." + generate_random_suffix()
-    
-    TRY
-        write_file_bytes(temp_path, utf8_encode(content))
-        set_file_permissions(temp_path, read_write_owner_only)
-        atomic_rename(temp_path, file_path)
-        RETURN success
-    CATCH any_error:
-        delete_file_if_exists(temp_path)
-        RETURN error "Failed to write file atomically: {any_error}"
-    END TRY
-END FUNCTION
-```
-
-**Acceptance Criteria:**
-- GIVEN a file exists WHEN edit_file is called with line=2, operation="replace", content="new line" THEN line 2 is replaced with "new line"
-- GIVEN a file with 5 lines WHEN edit_file is called with line=3, operation="insert", content="inserted" THEN new line is inserted at position 3
-- GIVEN a file exists WHEN edit_file is called with line=2, operation="delete" THEN line 2 is removed
-- GIVEN file does not exist WHEN edit_file is called with create_if_missing=true THEN new file is created
-- GIVEN multiple edits targeting different lines WHEN edit_file is called THEN all edits are applied successfully in single operation
-
-### 2.4 Concurrency and State Management
-
-**Filesystem Locking Algorithm:**
-
-```pseudocode
-FUNCTION acquire_file_lock(file_path):
-    // Use OS-level file locking instead of application-level
-    lock_handle = create_file_lock(file_path, exclusive=true)
-    
-    TRY
-        success = acquire_lock_with_timeout(lock_handle, timeout=30_seconds)
-        IF NOT success THEN
-            RETURN error "Failed to acquire file lock within timeout"
-        END IF
-        RETURN lock_handle
-    CATCH lock_error:
-        RETURN error "Lock acquisition failed: {lock_error}"
-    END TRY
-END FUNCTION
-
-FUNCTION release_file_lock(lock_handle):
-    TRY
-        release_lock(lock_handle)
-        close_lock_handle(lock_handle)
-    CATCH release_error:
-        log_error("Failed to release file lock", release_error)
-    END TRY
-END FUNCTION
-```
-
-**Filesystem Locking Benefits:**
-- Multiple server instances can coordinate access to same files
-- OS handles lock cleanup on process termination
-- No artificial concurrency limits - filesystem manages queuing
-- Cross-process synchronization without shared memory
-
-**State Transition Requirements:**
-- File states: [NonExistent, Readable, Locked, Modified, Error]
-- NonExistent → Readable (file discovery)
-- Readable → Locked (operation start)
-- Locked → Modified (successful edit)
-- Locked → Readable (operation completion)
-- Any State → Error (system failure)
-- Error → Readable (error recovery)
-
-## 3. System Interface Specifications
-
-### 3.1 HTTP REST API Specification
-
-**Base URL Pattern:** `http://{host}:{port}`  
-**Content-Type:** `application/json` (REQUIRED for all requests and responses)  
-**Character Encoding:** UTF-8 (MUST be specified in Content-Type header)
-
-#### 3.1.1 List Files Endpoint
-
-**HTTP Method:** POST  
-**Endpoint Path:** `/list_files`  
-**Request Headers:**
-- `Content-Type: application/json; charset=utf-8` (REQUIRED)
-- `Accept: application/json` (RECOMMENDED)
-
-**Request Schema:**
-```json
-{
-  "type": "object",
-  "properties": {},
-  "additionalProperties": false
-}
-```
-
-**Success Response (HTTP 200):**
-```json
-{
-  "type": "object",
-  "properties": {
-    "files": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Filename without path"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "File size in bytes"
-          },
-          "modified": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Last modified timestamp"
-          },
-          "readable": {
-            "type": "boolean",
-            "description": "Whether file can be read"
-          },
-          "writable": {
-            "type": "boolean",
-            "description": "Whether file can be written"
-          }
-        },
-        "required": ["name", "size", "modified", "readable", "writable"],
-        "additionalProperties": false
-      }
-    },
-    "total_count": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Total number of files"
-    },
-    "directory": {
-      "type": "string",
-      "description": "Working directory path"
-    }
-  },
-  "required": ["files", "total_count", "directory"],
-  "additionalProperties": false
-}
-```
-
-#### 3.1.2 Read File Endpoint
-
-**HTTP Method:** POST  
-**Endpoint Path:** `/read_file`  
-**Request Headers:**
-- `Content-Type: application/json; charset=utf-8` (REQUIRED)
-- `Accept: application/json` (RECOMMENDED)
-
-**Request Schema:**
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": {
-      "type": "string",
-      "pattern": "^[^/\\\\:*?\"<>|]+$",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Filename without path components"
-    },
-    "start_line": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Starting line number (1-based, inclusive)"
-    },
-    "end_line": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Ending line number (1-based, inclusive)"
-    }
-  },
-  "required": ["name"],
-  "additionalProperties": false
-}
-```
-
-**Success Response (HTTP 200):**
-```json
-{
-  "type": "object",
-  "properties": {
-    "content": {
-      "type": "string",
-      "description": "File content or specified line range"
-    },
-    "total_lines": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Total number of lines in the file"
-    },
-    "range_requested": {
-      "type": "object",
-      "properties": {
-        "start_line": {"type": "integer", "minimum": 1},
-        "end_line": {"type": "integer", "minimum": 1}
-      },
-      "description": "Echo of requested range parameters"
-    }
-  },
-  "required": ["content", "total_lines"],
-  "additionalProperties": false
-}
-```
-
-#### 3.1.3 Edit File Endpoint
-
-**HTTP Method:** POST  
-**Endpoint Path:** `/edit_file`  
-**Request Headers:** Same as read_file endpoint
-
-**Request Schema:**
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": {
-      "type": "string",
-      "pattern": "^[^/\\\\:*?\"<>|]+$",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Filename without path components"
-    },
-    "edits": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "line": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "Line number to edit (1-based)"
-          },
-          "content": {
-            "type": "string",
-            "description": "New content for the line (not required for delete)"
-          },
-          "operation": {
-            "type": "string",
-            "enum": ["replace", "insert", "delete"],
-            "description": "Type of edit operation"
-          }
-        },
-        "required": ["line", "operation"],
-        "additionalProperties": false
-      },
-      "maxItems": 1000,
-      "description": "Array of line-based edit operations"
-    },
-    "append": {
-      "type": "string",
-      "description": "Content to append to end of file"
-    },
-    "create_if_missing": {
-      "type": "boolean",
-      "default": false,
-      "description": "Create file if it doesn't exist"
-    }
-  },
-  "required": ["name"],
-  "additionalProperties": false
-}
-```
-
-**Success Response (HTTP 200):**
-```json
-{
-  "type": "object",
-  "properties": {
-    "success": {
-      "type": "boolean",
-      "const": true,
-      "description": "Operation success indicator"
-    },
-    "lines_modified": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Number of lines affected by the operation"
-    },
-    "file_created": {
-      "type": "boolean",
-      "description": "Whether a new file was created"
-    },
-    "new_total_lines": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Total lines in file after edit"
-    }
-  },
-  "required": ["success", "lines_modified", "file_created", "new_total_lines"],
-  "additionalProperties": false
-}
-```
-
-### 3.2 stdio JSON-RPC Specification
-
-**Protocol Version:** JSON-RPC 2.0 (MUST include "jsonrpc": "2.0")  
-**Transport:** stdin/stdout with line-delimited JSON messages  
-**Character Encoding:** UTF-8
-
-**Method Names:**
-- `read_file` (parameters match HTTP request schema)
-- `edit_file` (parameters match HTTP request schema)
-
-**Request Format:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "read_file",
-  "params": {
-    "name": "example.txt",
-    "start_line": 5,
-    "end_line": 10
-  }
-}
-```
-
-**Success Response Format:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "content": "line 5\nline 6\nline 7\nline 8\nline 9\nline 10",
-    "total_lines": 100,
-    "range_requested": {
-      "start_line": 5,
-      "end_line": 10
-    }
-  }
-}
-```
-
-### 3.3 Error Response Specification
-
-**HTTP Error Response Format:**
-```json
-{
-  "error": {
-    "code": -32001,
-    "message": "File 'example.txt' not found",
-    "data": {
-      "filename": "example.txt",
-      "operation": "read_file",
-      "timestamp": "2025-06-04T10:30:00Z",
-      "details": "Additional context information"
-    }
-  }
-}
-```
-
-**JSON-RPC Error Response Format:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "error": {
-    "code": -32001,
-    "message": "File 'example.txt' not found",
-    "data": {
-      "filename": "example.txt",
-      "operation": "read_file",
-      "timestamp": "2025-06-04T10:30:00Z"
-    }
-  }
-}
-```
-
-**Error Code Mappings:**
-- `-32700`: Parse error (invalid JSON)
-- `-32600`: Invalid request (missing required fields)
-- `-32601`: Method not found
-- `-32602`: Invalid params (validation failure)
-- `-32603`: Internal error (unexpected server error)
-- `-32001`: File system error (file not found, permission denied, etc.)
-
-**HTTP Status Code Mappings:**
-- `200`: Success (operation completed)
-- `400`: Bad Request (invalid JSON, validation failure)
-- `404`: Not Found (file not found)
-- `403`: Forbidden (permission denied)
-- `413`: Payload Too Large (file size limit exceeded)
-- `409`: Conflict (concurrent modification detected)
-- `500`: Internal Server Error (unexpected server error)
-
-## 4. Performance & Quality Requirements
-
-### 4.1 Performance Targets
-
-**Response Time Requirements:**
-- File reading operations MUST complete within 50 milliseconds for files up to 1MB
-- File editing operations MUST complete within 100 milliseconds for files up to 1MB
-- Server startup and initialization MUST complete within 1000 milliseconds
-- Graceful shutdown MUST complete within 5000 milliseconds
-
-**Memory Usage Requirements:**
-- Base server memory usage MUST NOT exceed 10MB at startup
-- Memory usage per active request MUST NOT exceed 2MB for files up to 1MB
-- Total memory usage MUST NOT exceed 50MB under maximum concurrent load
-- Memory leaks MUST NOT occur during normal operation (zero growth after 1000 operations)
-
-**Concurrent Operation Requirements:**
-- Server MUST handle concurrent file operations without artificial limits
-- Filesystem-level locking MUST prevent race conditions with zero data corruption incidents
-- Lock acquisition timeout MUST be 30 seconds maximum
-- Multiple server instances MUST coordinate access through filesystem locks
-
-**Binary Size Requirements:**
-- Compiled binary size MUST be under 10MB for each target platform
-- Binary MUST be statically linked with no external runtime dependencies
-- Cross-platform binaries MUST be functionally identical
-
-### 4.2 Security Requirements
-
-
+- File names MUST be validated against regex pattern `^[a-zA-Z0-9._-]+$`
 - File names MUST NOT exceed 255 characters in length
 - Line numbers MUST be validated as non-negative integers (minimum value 0)
 - File content MUST be validated as valid UTF-8 encoding
@@ -1774,13 +1019,15 @@ END FUNCTION
 - Maximum request size MUST be enforced (configurable, default 10MB)
 
 **File System Security Requirements:**
+
 - File operations MUST be strictly confined to specified working directory
-- Path traversal attempts (../, ..\, absolute paths) MUST be rejected with error code -32602
+- Path traversal attempts (../, .., absolute paths) MUST be rejected with error code -32602
 - Symbolic links outside working directory MUST NOT be followed
 - Temporary files MUST be created with restrictive permissions (600 octal)
 - File locks MUST be released automatically on process termination
 
 **Resource Protection Requirements:**
+
 - Maximum file size MUST be enforced (configurable, default 10MB)
 - Memory usage monitoring SHOULD trigger warnings at 80% of available memory
 - CPU usage SHOULD be monitored to prevent resource exhaustion
@@ -1789,6 +1036,7 @@ END FUNCTION
 ### 4.3 Reliability Requirements
 
 **Error Recovery Requirements:**
+
 - File system errors MUST be logged with structured context information
 - Partial edit operations MUST be completely rolled back on any failure
 - Server MUST continue operating normally after individual operation failures
@@ -1796,6 +1044,7 @@ END FUNCTION
 - File locks MUST be released automatically on unexpected process termination
 
 **Availability Requirements:**
+
 - Server uptime MUST exceed 99.9% during normal operation periods
 - Maximum unplanned downtime MUST be under 30 seconds per incident
 - Planned restart downtime MUST be under 5 seconds
@@ -1803,6 +1052,7 @@ END FUNCTION
 - Server MUST handle graceful shutdown signals (SIGTERM, SIGINT)
 
 **Data Integrity Requirements:**
+
 - Edit operations MUST be atomic (complete success or complete failure)
 - File corruption MUST be prevented through checksums or atomic operations
 - Concurrent file access MUST NOT result in data loss or corruption
@@ -1854,6 +1104,7 @@ STRUCTURE FileSystemUtils:
 ```
 
 **Component Relationships:**
+
 - MCPServer coordinates all MCP protocol handling and tool execution
 - FileOperations handles core business logic for the three tools
 - Transport handlers manage MCP protocol over HTTP vs stdio
@@ -2333,9 +1584,54 @@ FUNCTION process_mcp_request(mcp_request: mcp_request) -> mcp_response:
             RETURN handle_tools_list(mcp_request.id)
         CASE "tools/call":
             RETURN handle_tool_call(mcp_request.params, mcp_request.id)
+        CASE "notifications/initialized":
+            handle_initialized_notification()
+            RETURN null  // Notifications don't require responses
         DEFAULT:
             RETURN create_mcp_error(-32601, "Method not found", mcp_request.id)
     END SWITCH
+END FUNCTION
+
+FUNCTION handle_mcp_initialize(params: initialize_params, request_id: id) -> mcp_response:
+    // Validate protocol version
+    IF params.protocolVersion != "2024-11-05" THEN
+        RETURN create_mcp_error(-32602, "Unsupported protocol version", request_id)
+    END IF
+    
+    // Validate client capabilities
+    IF NOT params.capabilities OR NOT params.capabilities.tools THEN
+        RETURN create_mcp_error(-32602, "Client must support tools capability", request_id)
+    END IF
+    
+    // Return server capabilities and info
+    RETURN create_mcp_success({
+        protocolVersion: "2024-11-05",
+        capabilities: {tools: {}},
+        serverInfo: {
+            name: "file-editing-server",
+            version: "1.0.0",
+            description: "High-performance file editing server for AI agents"
+        }
+    }, request_id)
+END FUNCTION
+
+FUNCTION handle_tools_list(request_id: id) -> mcp_response:
+    tool_definitions = get_tool_definitions_with_annotations()
+    RETURN create_mcp_success({tools: tool_definitions}, request_id)
+END FUNCTION
+
+FUNCTION handle_tool_call(params: tool_call_params, request_id: id) -> mcp_response:
+    tool_name = params.name
+    tool_arguments = params.arguments
+    
+    // Validate tool exists
+    IF tool_name NOT IN ["list_files", "read_file", "edit_file"] THEN
+        RETURN create_mcp_error(-32602, "Unknown tool: {tool_name}", request_id)
+    END IF
+    
+    // Execute tool and return result
+    tool_result = execute_tool(tool_name, tool_arguments)
+    RETURN create_mcp_success(tool_result, request_id)
 END FUNCTION
 ```
 
@@ -2500,26 +1796,48 @@ test_categories = {
 FUNCTION test_complete_mcp_workflow():
     // Setup
     test_server = start_mcp_test_server(temp_directory)
-    test_file_content = "line1\nline2\nline3\nline4\nline5"
     
-    // Test MCP initialization
+    // Test MCP initialization sequence
     init_result = call_mcp_method(test_server, "initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {tools: {}},
         clientInfo: {name: "test-client", version: "1.0.0"}
     })
     assert_success(init_result)
+    assert_equals(init_result.result.protocolVersion, "2024-11-05")
+    assert_not_null(init_result.result.capabilities.tools)
     
-    // Test tools listing
+    // Send initialized notification
+    send_mcp_notification(test_server, "notifications/initialized", {})
+    
+    // Test tools listing with annotations
     tools_result = call_mcp_method(test_server, "tools/list", {})
     assert_success(tools_result)
-    assert_contains(tools_result.tools, "list_files")
-    assert_contains(tools_result.tools, "read_file") 
-    assert_contains(tools_result.tools, "edit_file")
+    assert_equals(length(tools_result.result.tools), 3)
+    
+    expected_tools = ["list_files", "read_file", "edit_file"]
+    FOR each tool_name in expected_tools DO
+        tool_def = find_tool_by_name(tools_result.result.tools, tool_name)
+        assert_not_null(tool_def)
+        assert_not_null(tool_def.annotations)
+        assert_has_property(tool_def.annotations, "readOnlyHint")
+        assert_has_property(tool_def.annotations, "destructiveHint")
+    END FOR
+    
+    // Verify tool annotations are correct
+    list_files_tool = find_tool_by_name(tools_result.result.tools, "list_files")
+    assert_equals(list_files_tool.annotations.readOnlyHint, true)
+    assert_equals(list_files_tool.annotations.destructiveHint, false)
+    
+    edit_file_tool = find_tool_by_name(tools_result.result.tools, "edit_file")
+    assert_equals(edit_file_tool.annotations.readOnlyHint, false)
+    assert_equals(edit_file_tool.annotations.destructiveHint, false)
     
     // Test file operations workflow
     initial_list = call_mcp_tool(test_server, "list_files", {})
-    assert_equals(parse_tool_result(initial_list).total_count, 0)
+    assert_tool_success(initial_list)
+    list_data = parse_tool_result(initial_list)
+    assert_contains(list_data, "Total files: 0")
     
     create_file_result = call_mcp_tool(test_server, "edit_file", {
         name: "test.txt",
@@ -2532,15 +1850,20 @@ FUNCTION test_complete_mcp_workflow():
         ]
     })
     assert_tool_success(create_file_result)
+    create_data = parse_tool_result(create_file_result)
+    assert_contains(create_data, "File created: true")
     
     updated_list = call_mcp_tool(test_server, "list_files", {})
+    assert_tool_success(updated_list)
     list_data = parse_tool_result(updated_list)
-    assert_equals(list_data.total_count, 1)
-    assert_equals(list_data.files[0].name, "test.txt")
+    assert_contains(list_data, "Total files: 1")
+    assert_contains(list_data, "name: test.txt")
     
     read_result = call_mcp_tool(test_server, "read_file", {name: "test.txt"})
+    assert_tool_success(read_result)
     read_data = parse_tool_result(read_result)
-    assert_contains(read_data, test_file_content)
+    assert_contains(read_data, "line1")
+    assert_contains(read_data, "line5")
     
     edit_result = call_mcp_tool(test_server, "edit_file", {
         name: "test.txt",
@@ -2557,8 +1880,15 @@ FUNCTION test_complete_mcp_workflow():
         start_line: 2,
         end_line: 2
     })
+    assert_tool_success(verify_result)
     verify_data = parse_tool_result(verify_result)
     assert_contains(verify_data, "modified line 3")
+    
+    // Test error handling through tool results
+    error_result = call_mcp_tool(test_server, "read_file", {name: "missing.txt"})
+    assert_tool_error(error_result)
+    error_data = parse_tool_result(error_result)
+    assert_contains(error_data, "Error: File 'missing.txt' not found")
     
     // Cleanup
     stop_mcp_test_server(test_server)
@@ -2577,9 +1907,14 @@ FUNCTION assert_tool_success(mcp_response: mcp_response) -> void:
     assert_equals(mcp_response.result.isError, false)
 END FUNCTION
 
+FUNCTION assert_tool_error(mcp_response: mcp_response) -> void:
+    assert_success(mcp_response)  // MCP call succeeded
+    assert_equals(mcp_response.result.isError, true)  // But tool failed
+END FUNCTION
+
 FUNCTION parse_tool_result(mcp_response: mcp_response) -> parsed_data:
     tool_text = mcp_response.result.content[0].text
-    RETURN parse_tool_output_format(tool_text)
+    RETURN tool_text
 END FUNCTION
 ```
 
