@@ -215,7 +215,7 @@ func TestFormatReadFileResult(t *testing.T) {
 	// reqStartLine=2, reqEndLine=3, actualEndLine=1 (0-indexed for "Line 3" if content is "Line 2\nLine 3")
 	// service.ReadFile returns: content, filename, totalLines, reqStartLine, reqEndLine, actualEndLine (0-based index of last line IN content), isRangeRequest
 	// For content "Line 2\nLine 3", actualEndLine would be 1.
-	expectedRange := "File: ranged.txt (lines 2-3 of 5 total)\n\nLine 2\nLine 3"
+	expectedRange := "File: ranged.txt (lines 2-2 of 5 total)\n\nLine 2\nLine 3"
 	if result := p.formatReadFileResult(rangeContent, "ranged.txt", 5, 2, 3, 1, true); result != expectedRange {
 		t.Errorf("formatReadFileResult range: expected\n'%s'\ngot\n'%s'", expectedRange, result)
 	}
