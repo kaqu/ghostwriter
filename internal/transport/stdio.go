@@ -70,7 +70,9 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 			var idForErrorResponse interface{}
 			// Attempt to extract ID specifically for this error response.
 			// This is a best-effort attempt, so we can ignore the error from this particular Unmarshal.
-			var idExtractor struct { ID interface{} `json:"id"` }
+			var idExtractor struct {
+				ID interface{} `json:"id"`
+			}
 			_ = json.Unmarshal(lineBytes, &idExtractor)
 			idForErrorResponse = idExtractor.ID
 

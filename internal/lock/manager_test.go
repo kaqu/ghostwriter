@@ -17,21 +17,18 @@ const (
 )
 
 func TestLockManager_NewLockManager(t *testing.T) {
-	lm := NewLockManager(5, time.Second)
+	lm := NewLockManager(5)
 	if lm == nil {
 		t.Fatal("NewLockManager returned nil")
 	}
-	if lm.defaultLockTimeout != time.Second {
-		t.Errorf("expected defaultLockTimeout 1s, got %v", lm.defaultLockTimeout)
-	}
-	lmZero := NewLockManager(0, time.Second)
+	lmZero := NewLockManager(0)
 	if lmZero == nil {
 		t.Fatal("NewLockManager returned nil for zero value")
 	}
 }
 
 func TestLockManager_AcquireReleaseBasic(t *testing.T) {
-	lm := NewLockManager(1, testLockTimeout)
+	lm := NewLockManager(1)
 	filename := "testfile.txt"
 
 	err := lm.AcquireLock(filename, testLockTimeout)
@@ -61,7 +58,7 @@ func TestLockManager_AcquireReleaseBasic(t *testing.T) {
 }
 
 func TestLockManager_AcquireEmptyFilename(t *testing.T) {
-	lm := NewLockManager(1, testLockTimeout)
+	lm := NewLockManager(1)
 	err := lm.AcquireLock("", testLockTimeout)
 	if !errors.Is(err, ErrFilenameRequired) {
 		t.Errorf("expected ErrFilenameRequired, got %v", err)
@@ -69,7 +66,7 @@ func TestLockManager_AcquireEmptyFilename(t *testing.T) {
 }
 
 func TestLockManager_ReleaseEmptyFilename(t *testing.T) {
-	lm := NewLockManager(1, testLockTimeout)
+	lm := NewLockManager(1)
 	err := lm.ReleaseLock("")
 	if !errors.Is(err, ErrFilenameRequired) {
 		t.Errorf("expected ErrFilenameRequired, got %v", err)
@@ -77,7 +74,7 @@ func TestLockManager_ReleaseEmptyFilename(t *testing.T) {
 }
 
 func TestLockManager_ReleaseNonExistentLock(t *testing.T) {
-	lm := NewLockManager(1, testLockTimeout)
+	lm := NewLockManager(1)
 	err := lm.ReleaseLock("nonexistent.txt")
 	if !errors.Is(err, ErrLockNotFound) {
 		t.Errorf("expected ErrLockNotFound, got %v", err)
@@ -85,7 +82,7 @@ func TestLockManager_ReleaseNonExistentLock(t *testing.T) {
 }
 
 func TestLockManager_LockTimeout(t *testing.T) {
-	lm := NewLockManager(1, testLockTimeout)
+	lm := NewLockManager(1)
 	filename := "timeout.txt"
 
 	// Acquire the lock first
@@ -118,7 +115,7 @@ func TestLockManager_LockTimeout(t *testing.T) {
 
 func TestLockManager_MaxConcurrentOps(t *testing.T) {
 	maxOps := 3
-	lm := NewLockManager(maxOps, testLockTimeout)
+	lm := NewLockManager(maxOps)
 	files := []string{"file1.txt", "file2.txt", "file3.txt", "file4.txt"}
 
 	for i := 0; i < maxOps; i++ {
@@ -182,7 +179,7 @@ func TestLockManager_MaxConcurrentOps(t *testing.T) {
 }
 
 func TestLockManager_ConcurrentAcquireRelease(t *testing.T) {
-	lm := NewLockManager(5, testLockTimeout) // Allow multiple concurrent ops
+	lm := NewLockManager(5) // Allow multiple concurrent ops
 	numGoroutines := 10
 	numFiles := 3 // Fewer files than goroutines to ensure contention
 	var wg sync.WaitGroup
@@ -230,76 +227,11 @@ func TestLockManager_ConcurrentAcquireRelease(t *testing.T) {
 	}
 }
 
-func TestLockManager_CleanupExpiredLocks(t *testing.T) {
-	shortExpiry := 50 * time.Millisecond
-	lm := NewLockManager(2, shortExpiry)
-
-	file1 := "expire1.txt"
-	file2 := "expire2.txt"
-
-	err := lm.AcquireLock(file1, testLockTimeout)
-	if err != nil {
-		t.Fatalf("AcquireLock for %s failed: %v", file1, err)
-	}
-	// This lock should not expire quickly
-	err = lm.AcquireLock(file2, testLockTimeout)
-	if err != nil {
-		t.Fatalf("AcquireLock for %s failed: %v", file2, err)
-	}
-	// Override AcquiredAt for file1 to make it seem old
-	if lock, ok := lm.locks.Load(file1); ok {
-		lockInfo := lock.(*LockInfo)
-		lockInfo.AcquiredAt = time.Now().Add(-1 * (shortExpiry + time.Second)) // Make it older than shortExpiry
-		lm.locks.Store(file1, lockInfo)
-	} else {
-		t.Fatalf("Could not retrieve lock for %s to modify AcquiredAt", file1)
-	}
-
-	if lm.GetCurrentLockCount() != 2 {
-		t.Fatalf("Expected 2 locks initially, got %d", lm.GetCurrentLockCount())
-	}
-
-	// Wait for a bit, but less than shortExpiry, so file2 doesn't expire naturally
-	time.Sleep(shortExpiry / 2)
-
-	// At this point, file1 is "old", file2 is not.
-	// The defaultLockTimeout of lm is shortExpiry.
-	// So, file1 should be cleaned up.
-
-	lm.CleanupExpiredLocks()
-
-	if lm.GetCurrentLockCount() != 1 {
-		t.Errorf("Expected 1 lock after cleanup, got %d", lm.GetCurrentLockCount())
-	}
-
-	if _, ok := lm.locks.Load(file1); ok {
-		t.Errorf("%s should have been cleaned up, but still exists", file1)
-	}
-	if _, ok := lm.locks.Load(file2); !ok {
-		t.Errorf("%s should NOT have been cleaned up, but it's gone", file2)
-	}
-
-	// Release the remaining lock
-	err = lm.ReleaseLock(file2)
-	if err != nil {
-		t.Fatalf("Failed to release %s: %v", file2, err)
-	}
-	if lm.GetCurrentLockCount() != 0 {
-		t.Errorf("Expected 0 locks after final release, got %d", lm.GetCurrentLockCount())
-	}
-
-	// Test cleanup on empty locks
-	lm.CleanupExpiredLocks()
-	if lm.GetCurrentLockCount() != 0 {
-		t.Errorf("Expected 0 locks after cleanup on empty, got %d", lm.GetCurrentLockCount())
-	}
-}
-
 func TestLockManager_AcquireReleaseStress(t *testing.T) {
-	lm := NewLockManager(10, 200*time.Millisecond) // Increased maxOps for stress
-	numGoroutines := 50                            // Many goroutines
-	iterations := 20                               // Each goroutine acquires/releases multiple times
-	files := make([]string, numGoroutines/2)       // Create contention
+	lm := NewLockManager(10)                 // Increased maxOps for stress
+	numGoroutines := 50                      // Many goroutines
+	iterations := 20                         // Each goroutine acquires/releases multiple times
+	files := make([]string, numGoroutines/2) // Create contention
 	for i := range files {
 		files[i] = fmt.Sprintf("stressfile%d.txt", i)
 	}
@@ -346,7 +278,7 @@ func TestLockManager_AcquireReleaseStress(t *testing.T) {
 }
 
 func TestLockManager_GlobalCapacityTimeoutThenAcquire(t *testing.T) {
-	lm := NewLockManager(1, testLockTimeout) // Max 1 op
+	lm := NewLockManager(1) // Max 1 op
 	file1 := "global_cap_file1.txt"
 	file2 := "global_cap_file2.txt"
 
