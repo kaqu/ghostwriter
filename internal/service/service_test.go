@@ -843,7 +843,7 @@ func TestListFiles_EmptyDirectory(t *testing.T) {
 	mockFs.listDirEntries[tempWorkingDir] = []filesystem.DirEntryInfo{}
 
 	req := models.ListFilesRequest{}
-	files, dir, err := service.ListFiles(req)
+	files, err := service.ListFiles(req)
 
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err.Message)
@@ -851,9 +851,6 @@ func TestListFiles_EmptyDirectory(t *testing.T) {
 
 	if len(files) != 0 {
 		t.Errorf("Expected Files to be empty, got %d items", len(files))
-	}
-	if dir != tempWorkingDir {
-		t.Errorf("Expected directory %s, got %s", tempWorkingDir, dir)
 	}
 }
 
@@ -885,7 +882,7 @@ func TestListFiles_WithFilesHiddenAndDirs(t *testing.T) {
 	// No need to mock stats for .hiddenfile or subdir as they should be filtered out before stats are read by the tested logic
 
 	req := models.ListFilesRequest{}
-	files, dir, err := service.ListFiles(req)
+	files, err := service.ListFiles(req)
 
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err.Message)
@@ -893,9 +890,6 @@ func TestListFiles_WithFilesHiddenAndDirs(t *testing.T) {
 
 	if len(files) != 2 {
 		t.Fatalf("Expected 2 files in response, got %d", len(files))
-	}
-	if dir != tempWorkingDir {
-		t.Errorf("Expected directory %s, got %s", tempWorkingDir, dir)
 	}
 
 	// Check sorting and content
@@ -966,7 +960,7 @@ func TestListFiles_LineCounts(t *testing.T) {
 	mockFs.isInvalidUTF8Content[string(invalidUTF8ContentBytes)] = true
 
 	req := models.ListFilesRequest{}
-	files, dir, err := service.ListFiles(req)
+	files, err := service.ListFiles(req)
 
 	if err != nil {
 		t.Fatalf("ListFiles failed: %v", err.Message)
@@ -974,9 +968,6 @@ func TestListFiles_LineCounts(t *testing.T) {
 
 	if len(files) != 5 {
 		t.Fatalf("Expected 5 files in response, got %d", len(files))
-	}
-	if dir != tempWorkingDir {
-		t.Errorf("Expected directory %s, got %s", tempWorkingDir, dir)
 	}
 
 	// Create a map for easy lookup and verification

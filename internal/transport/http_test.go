@@ -17,16 +17,16 @@ import (
 // --- Mock FileOperationService ---
 // This mock is adjusted to align with the new service signatures used by MCPProcessor tests.
 type mockFileOperationService struct {
-	ListFilesFunc func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail)
+	ListFilesFunc func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail)
 	ReadFileFunc  func(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail)
 	EditFileFunc  func(req models.EditFileRequest) (filename string, linesModified int, newTotalLines int, fileCreated bool, err *models.ErrorDetail)
 }
 
-func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
+func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
 	if m.ListFilesFunc != nil {
 		return m.ListFilesFunc(req)
 	}
-	return nil, "", errors.NewInternalError("ListFilesFunc not implemented in mock")
+	return nil, errors.NewInternalError("ListFilesFunc not implemented in mock")
 }
 
 func (m *mockFileOperationService) ReadFile(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail) {
@@ -42,7 +42,6 @@ func (m *mockFileOperationService) EditFile(req models.EditFileRequest) (filenam
 	}
 	return "", 0, 0, false, errors.NewInternalError("EditFileFunc not implemented in mock")
 }
-
 
 func TestHTTPHandler_handleReadFile_Success(t *testing.T) {
 	mockService := &mockFileOperationService{
@@ -80,7 +79,7 @@ func TestHTTPHandler_handleReadFile_Success(t *testing.T) {
 		t.Errorf("Expected IsError to be false, got true. Content: %s", mcpResp.Content[0].Text)
 	}
 	// formatHTTPReadFileResult(content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool)
-	expectedText := formatHTTPReadFileResult("hello world", "test.txt", 1, 0,0,0, false)
+	expectedText := formatHTTPReadFileResult("hello world", "test.txt", 1, 0, 0, 0, false)
 	if len(mcpResp.Content) != 1 || mcpResp.Content[0].Text != expectedText {
 		t.Errorf("Expected content text %q, got %q", expectedText, mcpResp.Content[0].Text)
 	}
@@ -312,13 +311,13 @@ func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 			// However, the HTTP handler decodes into models.ReadFileRequest first. If "name" is missing, it's a bad request.
 			// If "name" is present but file not found by service, then service error.
 			// This mock will simulate a service error if called, to show the path.
-			return "", req.Name, 0, 0,0,0,false, errors.NewInvalidParamsError("test read error from mock", nil)
+			return "", req.Name, 0, 0, 0, 0, false, errors.NewInvalidParamsError("test read error from mock", nil)
 		},
 		EditFileFunc: func(req models.EditFileRequest) (string, int, int, bool, *models.ErrorDetail) {
-			return req.Name, 0,0,false, errors.NewInvalidParamsError("test edit error from mock", nil)
+			return req.Name, 0, 0, false, errors.NewInvalidParamsError("test edit error from mock", nil)
 		},
-		ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
-			return []models.FileInfo{}, "/testdir", nil // Successful list files
+		ListFilesFunc: func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
+			return []models.FileInfo{}, nil // Successful list files
 		},
 	}
 	handler := NewHTTPHandler(mockService, 1)
@@ -340,11 +339,10 @@ func TestHTTPHandler_RegisterRoutes(t *testing.T) {
 	if mcpListResp.IsError {
 		t.Errorf("/list_files: expected IsError false, got true. Content: %s", mcpListResp.Content[0].Text)
 	}
-	expectedListText := formatHTTPListFilesResult([]models.FileInfo{}, "/testdir")
+	expectedListText := formatHTTPListFilesResult([]models.FileInfo{})
 	if len(mcpListResp.Content) != 1 || mcpListResp.Content[0].Text != expectedListText {
 		t.Errorf("/list_files: expected content text %q, got %q", expectedListText, mcpListResp.Content[0].Text)
 	}
-
 
 	// Test /read_file (expecting bad request from handler due to missing "name" in "{}")
 	reqReadFile, _ := http.NewRequest("POST", "/read_file", bytes.NewBufferString("{}"))

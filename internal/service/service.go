@@ -28,7 +28,7 @@ const (
 type FileOperationService interface {
 	ReadFile(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail)
 	EditFile(req models.EditFileRequest) (filename string, linesModified int, newTotalLines int, fileCreated bool, err *models.ErrorDetail)
-	ListFiles(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail)
+	ListFiles(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail)
 }
 
 // DefaultFileOperationService implements the FileOperationService interface.
@@ -588,7 +588,7 @@ func abs(x int) int {
 }
 
 // ListFiles implements the FileOperationService interface.
-func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
+func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
 	// Request object is currently empty, so no params to validate from req itself.
 
 	dirEntries, err := s.fsAdapter.ListDir(s.workingDir)
@@ -599,9 +599,9 @@ func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) ([]
 			underlyingErr = unwrapped
 		}
 		if os.IsPermission(underlyingErr) {
-			return nil, "", errors.NewPermissionDeniedError(s.workingDir, "list_dir_working_dir")
+			return nil, errors.NewPermissionDeniedError(s.workingDir, "list_dir_working_dir")
 		}
-		return nil, "", errors.NewFileSystemError(s.workingDir, "list_dir", fmt.Sprintf("Failed to list directory: %v", err))
+		return nil, errors.NewFileSystemError(s.workingDir, "list_dir", fmt.Sprintf("Failed to list directory: %v", err))
 	}
 
 	var files []models.FileInfo
@@ -661,5 +661,5 @@ func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) ([]
 		return files[i].Name < files[j].Name
 	})
 
-	return files, s.workingDir, nil
+	return files, nil
 }

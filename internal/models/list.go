@@ -20,5 +20,4 @@ type ListFilesRequest struct {
 type ListFilesResponse struct {
 	Files      []FileInfo `json:"files"`
 	TotalCount int        `json:"total_count"`
-	Directory  string     `json:"directory"`
 }
