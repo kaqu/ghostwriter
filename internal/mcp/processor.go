@@ -81,7 +81,7 @@ func (p *MCPProcessor) handleToolCall(toolName string, toolArgs json.RawMessage)
 				Message: "Invalid parameters for list_files: " + err.Error(),
 			}
 		}
-		files, dir, serviceErr := p.service.ListFiles(listParams)
+		files, serviceErr := p.service.ListFiles(listParams)
 		if serviceErr != nil {
 			return &models.MCPToolResult{
 				Content: []models.MCPToolContent{{Type: "text", Text: p.formatToolError(serviceErr)}},
@@ -89,7 +89,7 @@ func (p *MCPProcessor) handleToolCall(toolName string, toolArgs json.RawMessage)
 			}, nil
 		}
 		return &models.MCPToolResult{
-			Content: []models.MCPToolContent{{Type: "text", Text: p.formatListFilesResult(files, dir)}},
+			Content: []models.MCPToolContent{{Type: "text", Text: p.formatListFilesResult(files)}},
 			IsError: false,
 		}, nil
 	case "read_file":
@@ -139,12 +139,12 @@ func (p *MCPProcessor) handleToolCall(toolName string, toolArgs json.RawMessage)
 }
 
 // formatListFilesResult formats the result of a list_files call.
-func (p *MCPProcessor) formatListFilesResult(files []models.FileInfo, directory string) string {
+func (p *MCPProcessor) formatListFilesResult(files []models.FileInfo) string {
 	if len(files) == 0 {
-		return fmt.Sprintf("No files found in directory: %s", directory)
+		return "No files found"
 	}
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("Directory: %s\nTotal files: %d\n\n", directory, len(files)))
+	builder.WriteString(fmt.Sprintf("Total files: %d\n\n", len(files)))
 	builder.WriteString("Files:\n")
 	for _, f := range files {
 		builder.WriteString(fmt.Sprintf("- Name: %s\n", f.Name))
@@ -188,7 +188,6 @@ func (p *MCPProcessor) formatReadFileResult(content string, filename string, tot
 			actualDisplayStartLine = reqStartLine
 		}
 
-
 		// Determine the 1-based actual end line for display
 		actualDisplayEndLine := 0
 		if actualEndLine != -1 {
@@ -206,9 +205,10 @@ func (p *MCPProcessor) formatReadFileResult(content string, filename string, tot
 		} else if reqStartLine == 0 && reqEndLine != 0 && totalLines > 0 { // Beginning of file to end_line
 			actualDisplayStartLine = 1
 			actualDisplayEndLine = reqEndLine
-			if actualDisplayEndLine > totalLines { actualDisplayEndLine = totalLines }
+			if actualDisplayEndLine > totalLines {
+				actualDisplayEndLine = totalLines
+			}
 		}
-
 
 		builder.WriteString(fmt.Sprintf("Requested Range: start_line=%d, end_line=%d\n", reqStartLine, reqEndLine))
 		builder.WriteString(fmt.Sprintf("Actual Range Returned: start_line=%d, end_line=%d\n", actualDisplayStartLine, actualDisplayEndLine))

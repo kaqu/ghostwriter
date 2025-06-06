@@ -151,12 +151,12 @@ func (h *HTTPHandler) handleReadFile(w http.ResponseWriter, r *http.Request) {
 // --- Formatting Helpers for HTTP Handler ---
 
 // formatHTTPListFilesResult formats the result for list_files for HTTP responses.
-func formatHTTPListFilesResult(files []models.FileInfo, directory string) string {
+func formatHTTPListFilesResult(files []models.FileInfo) string {
 	if len(files) == 0 {
-		return fmt.Sprintf("No files found in directory: %s", directory)
+		return "No files found"
 	}
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("Directory: %s\nTotal files: %d\n\n", directory, len(files)))
+	builder.WriteString(fmt.Sprintf("Total files: %d\n\n", len(files)))
 	builder.WriteString("Files:\n")
 	for _, f := range files {
 		builder.WriteString(fmt.Sprintf("- Name: %s\n", f.Name))
@@ -384,7 +384,7 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	files, directory, serviceErr := h.service.ListFiles(req)
+	files, serviceErr := h.service.ListFiles(req)
 	if serviceErr != nil {
 		// Format the error message using the new helper
 		errorText := formatHTTPToolError(serviceErr)
@@ -405,7 +405,7 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Format the success response using the new helper
-	successText := formatHTTPListFilesResult(files, directory)
+	successText := formatHTTPListFilesResult(files)
 	resp := models.MCPToolResult{
 		Content: []models.MCPToolContent{{Type: "text", Text: successText}},
 		IsError: false,

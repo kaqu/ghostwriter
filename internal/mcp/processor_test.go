@@ -10,16 +10,16 @@ import (
 
 // mockFileOperationService is a mock implementation of FileOperationService for testing.
 type mockFileOperationService struct {
-	ListFilesFunc func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail)
+	ListFilesFunc func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail)
 	ReadFileFunc  func(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail)
 	EditFileFunc  func(req models.EditFileRequest) (filename string, linesModified int, newTotalLines int, fileCreated bool, err *models.ErrorDetail)
 }
 
-func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
+func (m *mockFileOperationService) ListFiles(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
 	if m.ListFilesFunc != nil {
 		return m.ListFilesFunc(req)
 	}
-	return nil, "", &models.ErrorDetail{Code: 1, Message: "ListFilesFunc not implemented"}
+	return nil, &models.ErrorDetail{Code: 1, Message: "ListFilesFunc not implemented"}
 }
 
 func (m *mockFileOperationService) ReadFile(req models.ReadFileRequest) (content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool, err *models.ErrorDetail) {
@@ -86,7 +86,7 @@ func TestMCPProcessor_ProcessRequest(t *testing.T) {
 				Method:  "unknown_method",
 				ID:      "unknown1",
 			},
-			mockSetup: nil,
+			mockSetup:      nil,
 			expectedResult: nil,
 			expectedError: &models.JSONRPCError{
 				Code:    -32601, // Method not found
@@ -102,17 +102,17 @@ func TestMCPProcessor_ProcessRequest(t *testing.T) {
 				ID:      "list1",
 			},
 			mockSetup: func() {
-				mockService.ListFilesFunc = func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
+				mockService.ListFilesFunc = func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
 					return []models.FileInfo{
 						{Name: "file1.txt", Size: 100, Modified: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC).Format(time.RFC3339), Readable: true, Writable: true, Lines: 10},
-					}, "/test/dir", nil
+					}, nil
 				}
 			},
 			expectedResult: &models.MCPToolResult{
 				Content: []models.MCPToolContent{{Type: "text", Text: processor.formatListFilesResult(
 					[]models.FileInfo{
 						{Name: "file1.txt", Size: 100, Modified: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC).Format(time.RFC3339), Readable: true, Writable: true, Lines: 10},
-					}, "/test/dir"),
+					}),
 				}},
 				IsError: false,
 			},
@@ -127,8 +127,8 @@ func TestMCPProcessor_ProcessRequest(t *testing.T) {
 				ID:      "list_err1",
 			},
 			mockSetup: func() {
-				mockService.ListFilesFunc = func(req models.ListFilesRequest) ([]models.FileInfo, string, *models.ErrorDetail) {
-					return nil, "", &models.ErrorDetail{Code: 1000, Message: "Service error listing files"}
+				mockService.ListFilesFunc = func(req models.ListFilesRequest) ([]models.FileInfo, *models.ErrorDetail) {
+					return nil, &models.ErrorDetail{Code: 1000, Message: "Service error listing files"}
 				}
 			},
 			expectedResult: &models.MCPToolResult{
@@ -236,7 +236,7 @@ func TestMCPProcessor_ProcessRequest(t *testing.T) {
 				Params:  json.RawMessage(`{"name": "list_files", "arguments": "not_an_object"}`),
 				ID:      "invalid_args1",
 			},
-			mockSetup: nil,
+			mockSetup:      nil,
 			expectedResult: nil, // Error is at JSON-RPC level
 			expectedError: &models.JSONRPCError{
 				Code:    -32602, // Invalid Params
@@ -251,7 +251,7 @@ func TestMCPProcessor_ProcessRequest(t *testing.T) {
 				Params:  json.RawMessage(`"not_tool_call_params_object"`),
 				ID:      "invalid_tool_call_params",
 			},
-			mockSetup: nil,
+			mockSetup:      nil,
 			expectedResult: nil,
 			expectedError: &models.JSONRPCError{
 				Code:    -32602, // Invalid Params
