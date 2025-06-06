@@ -18,6 +18,17 @@ import (
 	"unicode/utf8"
 )
 
+// unwrapRoot returns the deepest wrapped error.
+func unwrapRoot(err error) error {
+	for {
+		unwrapped := stdErrors.Unwrap(err)
+		if unwrapped == nil {
+			return err
+		}
+		err = unwrapped
+	}
+}
+
 const (
 	defaultMaxLineCount      = 100000 // Default max line count if not specified in config (though config has a default)
 	defaultMaxFilenameLength = 255
@@ -197,10 +208,7 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (
 
 	exists, err := s.fsAdapter.FileExists(filePath)
 	if err != nil {
-		underlyingErr := err
-		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-			underlyingErr = unwrapped
-		}
+		underlyingErr := unwrapRoot(err)
 		if os.IsPermission(underlyingErr) {
 			errRet = errors.NewPermissionDeniedError(req.Name, "check_exists")
 			return "", req.Name, 0, originalReqStartLine, originalReqEndLine, -1, isRangeRequest, errRet
@@ -215,10 +223,7 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (
 
 	stats, err := s.fsAdapter.GetFileStats(filePath)
 	if err != nil {
-		underlyingErr := err
-		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-			underlyingErr = unwrapped
-		}
+		underlyingErr := unwrapRoot(err)
 		if os.IsPermission(underlyingErr) {
 			errRet = errors.NewPermissionDeniedError(req.Name, "get_stats")
 			return "", req.Name, 0, originalReqStartLine, originalReqEndLine, -1, isRangeRequest, errRet
@@ -237,10 +242,7 @@ func (s *DefaultFileOperationService) ReadFile(req models.ReadFileRequest) (
 
 	fileContentBytes, err := s.fsAdapter.ReadFileBytes(filePath)
 	if err != nil {
-		underlyingErr := err
-		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-			underlyingErr = unwrapped
-		}
+		underlyingErr := unwrapRoot(err)
 		if os.IsPermission(underlyingErr) {
 			errRet = errors.NewPermissionDeniedError(req.Name, "read_bytes")
 			return "", req.Name, 0, originalReqStartLine, originalReqEndLine, -1, isRangeRequest, errRet
@@ -408,10 +410,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (
 
 	fileExists, fsErr := s.fsAdapter.FileExists(filePath)
 	if fsErr != nil {
-		underlyingErr := fsErr
-		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-			underlyingErr = unwrapped
-		}
+		underlyingErr := unwrapRoot(fsErr)
 		if os.IsPermission(underlyingErr) {
 			errRet = errors.NewPermissionDeniedError(filename, "check_exists_on_edit")
 			return filename, 0, 0, false, errRet
@@ -423,10 +422,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (
 	if fileExists {
 		stats, statErr := s.fsAdapter.GetFileStats(filePath)
 		if statErr != nil {
-			underlyingErr := statErr
-			for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-				underlyingErr = unwrapped
-			}
+			underlyingErr := unwrapRoot(statErr)
 			if os.IsPermission(underlyingErr) {
 				errRet = errors.NewPermissionDeniedError(filename, "get_stats_on_edit")
 				return filename, 0, 0, false, errRet
@@ -445,10 +441,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (
 
 		fileContentBytes, readErr := s.fsAdapter.ReadFileBytes(filePath)
 		if readErr != nil {
-			underlyingErr := readErr
-			for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-				underlyingErr = unwrapped
-			}
+			underlyingErr := unwrapRoot(readErr)
 			if os.IsPermission(underlyingErr) {
 				errRet = errors.NewPermissionDeniedError(filename, "read_bytes_on_edit")
 				return filename, 0, 0, false, errRet
@@ -553,10 +546,7 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (
 
 	writeErr := s.fsAdapter.WriteFileBytesAtomic(filePath, finalContentBytes, 0644) // Use a common permission, e.g., 0644
 	if writeErr != nil {
-		underlyingErr := writeErr
-		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-			underlyingErr = unwrapped
-		}
+		underlyingErr := unwrapRoot(writeErr)
 		if os.IsPermission(underlyingErr) {
 			errRet = errors.NewPermissionDeniedError(filename, "write_atomic")
 			return filename, 0, originalLineCount, fileCreated, errRet
@@ -593,10 +583,7 @@ func (s *DefaultFileOperationService) ListFiles(req models.ListFilesRequest) ([]
 	dirEntries, err := s.fsAdapter.ListDir(s.workingDir)
 	if err != nil {
 		// This could be permission denied on workingDir itself, or other errors.
-		underlyingErr := err
-		for unwrapped := stdErrors.Unwrap(underlyingErr); unwrapped != nil; unwrapped = stdErrors.Unwrap(underlyingErr) {
-			underlyingErr = unwrapped
-		}
+		underlyingErr := unwrapRoot(err)
 		if os.IsPermission(underlyingErr) {
 			return nil, errors.NewPermissionDeniedError(s.workingDir, "list_dir_working_dir")
 		}
