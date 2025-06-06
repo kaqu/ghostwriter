@@ -2,6 +2,8 @@ package models
 
 import "encoding/json"
 
+const ErrCodeParseError = -32700
+
 // JSONRPCRequest represents a JSON-RPC request object.
 type JSONRPCRequest struct {
 	// JSONRPC specifies the version of the JSON-RPC protocol, must be "2.0".

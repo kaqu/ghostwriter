@@ -86,13 +86,10 @@ func (h *StdioHandler) Start(input io.Reader, output io.Writer) error {
 
 		// Basic validation of the JSON-RPC request structure
 		if req.JSONRPC != "2.0" {
-			resp := models.JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Error: &models.JSONRPCError{
-					Code:    errors.CodeInvalidRequest,
-					Message: "Invalid JSON-RPC version. Must be '2.0'.",
-				},
+			// Removed local 'resp' declaration, assign to outer 'response'
+			response.Error = &models.JSONRPCError{
+				Code:    errors.CodeInvalidRequest,
+				Message: "Invalid JSON-RPC version. Must be '2.0'.",
 			}
 			h.writeJSONRPCResponse(output, response) // Use the initialized response
 			continue
