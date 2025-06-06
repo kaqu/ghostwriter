@@ -129,16 +129,117 @@ func (h *HTTPHandler) handleReadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceResp, serviceErr := h.service.ReadFile(req)
+	content, filename, totalLines, reqStartLine, reqEndLine, actualEndLine, isRangeRequest, serviceErr := h.service.ReadFile(req)
 	if serviceErr != nil {
-		// Map internal error to HTTP status
-		// The serviceErr is already *models.ErrorDetail
-		httpStatus := errors.MapErrorToHTTPStatus(serviceErr.Code, serviceErr)
-		writeJSONErrorResponse(w, httpStatus, serviceErr)
+		errorText := formatHTTPToolError(serviceErr)
+		resp := models.MCPToolResult{
+			Content: []models.MCPToolContent{{Type: "text", Text: errorText}},
+			IsError: true,
+		}
+		writeJSONResponse(w, http.StatusOK, resp) // Adhering to MCP spec: 200 OK with IsError:true
 		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, serviceResp)
+	successText := formatHTTPReadFileResult(content, filename, totalLines, reqStartLine, reqEndLine, actualEndLine, isRangeRequest)
+	resp := models.MCPToolResult{
+		Content: []models.MCPToolContent{{Type: "text", Text: successText}},
+		IsError: false,
+	}
+	writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// --- Formatting Helpers for HTTP Handler ---
+
+// formatHTTPListFilesResult formats the result for list_files for HTTP responses.
+func formatHTTPListFilesResult(files []models.FileInfo, directory string) string {
+	if len(files) == 0 {
+		return fmt.Sprintf("No files found in directory: %s", directory)
+	}
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("Directory: %s\nTotal files: %d\n\n", directory, len(files)))
+	builder.WriteString("Files:\n")
+	for _, f := range files {
+		builder.WriteString(fmt.Sprintf("- Name: %s\n", f.Name))
+		builder.WriteString(fmt.Sprintf("  Size: %d bytes\n", f.Size))
+		builder.WriteString(fmt.Sprintf("  Modified: %s\n", f.Modified))
+		builder.WriteString(fmt.Sprintf("  Readable: %t\n", f.Readable))
+		builder.WriteString(fmt.Sprintf("  Writable: %t\n", f.Writable))
+		if f.Lines == -1 {
+			builder.WriteString("  Lines: (error or too large to count)\n")
+		} else {
+			builder.WriteString(fmt.Sprintf("  Lines: %d\n", f.Lines))
+		}
+	}
+	return builder.String()
+}
+
+// formatHTTPReadFileResult formats the result for read_file for HTTP responses.
+func formatHTTPReadFileResult(content string, filename string, totalLines int, reqStartLine int, reqEndLine int, actualEndLine int, isRangeRequest bool) string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("File: %s\n", filename))
+	builder.WriteString(fmt.Sprintf("Total Lines: %d\n", totalLines))
+
+	if isRangeRequest {
+		actualDisplayStartLine := 0
+		if totalLines == 0 || actualEndLine == -1 {
+			actualDisplayStartLine = 0
+		} else if len(strings.Split(content, "\n")) > 0 && content != "" {
+			if reqStartLine == 0 && reqEndLine != 0 {
+				actualDisplayStartLine = 1
+			} else if reqStartLine != 0 {
+				actualDisplayStartLine = reqStartLine
+			} else {
+				actualDisplayStartLine = 1
+			}
+		} else if reqStartLine > 0 {
+			actualDisplayStartLine = reqStartLine
+		}
+
+		actualDisplayEndLine := 0
+		if actualEndLine != -1 {
+			actualDisplayEndLine = actualEndLine + 1
+		}
+
+		if reqStartLine == 0 && reqEndLine == 0 && totalLines > 0 {
+			actualDisplayStartLine = 1
+			actualDisplayEndLine = totalLines
+		} else if reqStartLine != 0 && reqEndLine == 0 && totalLines > 0 {
+			actualDisplayStartLine = reqStartLine
+			actualDisplayEndLine = totalLines
+		} else if reqStartLine == 0 && reqEndLine != 0 && totalLines > 0 {
+			actualDisplayStartLine = 1
+			actualDisplayEndLine = reqEndLine
+			if actualDisplayEndLine > totalLines {
+				actualDisplayEndLine = totalLines
+			}
+		}
+		builder.WriteString(fmt.Sprintf("Requested Range: start_line=%d, end_line=%d\n", reqStartLine, reqEndLine))
+		builder.WriteString(fmt.Sprintf("Actual Range Returned: start_line=%d, end_line=%d\n", actualDisplayStartLine, actualDisplayEndLine))
+	}
+	builder.WriteString(fmt.Sprintf("\nContent:\n%s", content))
+	return builder.String()
+}
+
+// formatHTTPEditFileResult formats the result for edit_file for HTTP responses.
+func formatHTTPEditFileResult(filename string, linesModified int, newTotalLines int, fileCreated bool) string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("File: %s\n", filename))
+	if fileCreated {
+		builder.WriteString("Status: File created successfully.\n")
+	} else {
+		builder.WriteString("Status: File edited successfully.\n")
+	}
+	builder.WriteString(fmt.Sprintf("Lines Modified: %d\n", linesModified))
+	builder.WriteString(fmt.Sprintf("New Total Lines: %d\n", newTotalLines))
+	return builder.String()
+}
+
+// formatHTTPToolError formats a service error for HTTP responses.
+func formatHTTPToolError(serviceErr *models.ErrorDetail) string {
+	if serviceErr == nil {
+		return "Error: An unexpected error occurred, but no details were provided."
+	}
+	return fmt.Sprintf("Error: %s (Code: %d)", serviceErr.Message, serviceErr.Code)
 }
 
 func (h *HTTPHandler) handleEditFile(w http.ResponseWriter, r *http.Request) {
@@ -185,14 +286,23 @@ func (h *HTTPHandler) handleEditFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serviceResp, serviceErr := h.service.EditFile(req)
+	filename, linesModified, newTotalLines, fileCreated, serviceErr := h.service.EditFile(req)
 	if serviceErr != nil {
-		httpStatus := errors.MapErrorToHTTPStatus(serviceErr.Code, serviceErr)
-		writeJSONErrorResponse(w, httpStatus, serviceErr)
+		errorText := formatHTTPToolError(serviceErr)
+		resp := models.MCPToolResult{
+			Content: []models.MCPToolContent{{Type: "text", Text: errorText}},
+			IsError: true,
+		}
+		writeJSONResponse(w, http.StatusOK, resp) // Adhering to MCP spec: 200 OK with IsError:true
 		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, serviceResp)
+	successText := formatHTTPEditFileResult(filename, linesModified, newTotalLines, fileCreated)
+	resp := models.MCPToolResult{
+		Content: []models.MCPToolContent{{Type: "text", Text: successText}},
+		IsError: false,
+	}
+	writeJSONResponse(w, http.StatusOK, resp)
 }
 
 // StartServer initializes and starts the HTTP server.
@@ -274,16 +384,31 @@ func (h *HTTPHandler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	serviceResp, serviceErr := h.service.ListFiles(req)
-	// Removed dummy response:
-	// serviceResp := models.ListFilesResponse{Files: []models.FileInfo{}, TotalCount: 0, Directory: "dummy/path"}
-	// var serviceErr *models.ErrorDetail = nil
-
+	files, directory, serviceErr := h.service.ListFiles(req)
 	if serviceErr != nil {
-		httpStatus := errors.MapErrorToHTTPStatus(serviceErr.Code, serviceErr)
-		writeJSONErrorResponse(w, httpStatus, serviceErr)
+		// Format the error message using the new helper
+		errorText := formatHTTPToolError(serviceErr)
+		resp := models.MCPToolResult{
+			Content: []models.MCPToolContent{{Type: "text", Text: errorText}},
+			IsError: true,
+		}
+		// For service level errors that are not client's fault (e.g. internal, fs error),
+		// we might still want to return 200 OK with IsError:true as per MCP spec,
+		// but the current writeJSONErrorResponse maps some to 500.
+		// For now, let's assume MCP spec (200 OK, IsError:true) takes precedence for tool execution results.
+		// However, if the error is due to invalid client input (e.g. CodeInvalidParams from service),
+		// a 400 Bad Request might be more appropriate.
+		// This logic might need refinement based on how strictly HTTP status codes should reflect MCP errors.
+		// Let's use 200 OK for now and let IsError flag the problem in the MCPToolResult.
+		writeJSONResponse(w, http.StatusOK, resp)
 		return
 	}
 
-	writeJSONResponse(w, http.StatusOK, serviceResp)
+	// Format the success response using the new helper
+	successText := formatHTTPListFilesResult(files, directory)
+	resp := models.MCPToolResult{
+		Content: []models.MCPToolContent{{Type: "text", Text: successText}},
+		IsError: false,
+	}
+	writeJSONResponse(w, http.StatusOK, resp)
 }
