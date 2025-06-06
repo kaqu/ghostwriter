@@ -11,27 +11,6 @@ import (
 	"testing"
 )
 
-// MockMCPProcessor is a mock implementation of mcp.MCPProcessorInterface.
-// Copied from http_test.go - ideally this would be in a shared test/mocks package.
-type MockMCPProcessor struct {
-	ExecuteToolFunc    func(toolName string, argumentsStruct interface{}) (*models.MCPToolResult, error)
-	ProcessRequestFunc func(req models.JSONRPCRequest) (*models.MCPToolResult, *models.JSONRPCError)
-}
-
-func (m *MockMCPProcessor) ExecuteTool(toolName string, argumentsStruct interface{}) (*models.MCPToolResult, error) {
-	if m.ExecuteToolFunc != nil {
-		return m.ExecuteToolFunc(toolName, argumentsStruct)
-	}
-	return nil, fmt.Errorf("ExecuteToolFunc not implemented")
-}
-
-func (m *MockMCPProcessor) ProcessRequest(req models.JSONRPCRequest) (*models.MCPToolResult, *models.JSONRPCError) {
-	if m.ProcessRequestFunc != nil {
-		return m.ProcessRequestFunc(req)
-	}
-	return nil, &models.JSONRPCError{Code: -32000, Message: "ProcessRequestFunc not implemented in stdio test mock"}
-}
-
 // runStdioTestHelper simulates running the StdioHandler with given input and returns the output string.
 func runStdioTestHelper(t *testing.T, handler *StdioHandler, input string) string {
 	var outputBuffer bytes.Buffer
@@ -206,7 +185,7 @@ func TestStdioHandler_InvalidJSONRPC(t *testing.T) {
 		input := `{"method": "test", "id": 2}` + "\n"
 		output := runStdioTestHelper(t, handler, input)
 		var resp models.JSONRPCResponse
-		json.Unmarshal([]byte(output), &resp) // Ignore error, check fields
+		_ = json.Unmarshal([]byte(output), &resp)           // Ignore error, check fields
 		if resp.Error == nil || resp.Error.Code != -32600 { // Invalid Request
 			t.Errorf("Expected error code -32600 for missing version, got %+v", resp.Error)
 		}
@@ -219,7 +198,7 @@ func TestStdioHandler_InvalidJSONRPC(t *testing.T) {
 		input := `{"jsonrpc": "2.0", "id": 3}` + "\n"
 		output := runStdioTestHelper(t, handler, input)
 		var resp models.JSONRPCResponse
-		json.Unmarshal([]byte(output), &resp) // Ignore error, check fields
+		_ = json.Unmarshal([]byte(output), &resp)           // Ignore error, check fields
 		if resp.Error == nil || resp.Error.Code != -32600 { // Invalid Request
 			t.Errorf("Expected error code -32600 for missing method, got %+v", resp.Error)
 		}

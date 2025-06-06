@@ -2,16 +2,17 @@ package mcp
 
 import (
 	"encoding/json"
+	"file-editor-server/internal/errors"
 	"file-editor-server/internal/models"
 	"file-editor-server/internal/service"
-	"fmt"     // Added import
-	"strings" // Added import
+	"fmt"
+	"strings"
 )
 
 const (
-	protocolVersion = "2024-11-05"
-	serverVersion   = "1.0.0"
-	serverName      = "file-editing-server"
+	protocolVersion   = "2024-11-05"
+	serverVersion     = "1.0.0"
+	serverName        = "file-editing-server"
 	serverDescription = "High-performance file editing server for AI agents"
 )
 
@@ -60,7 +61,7 @@ func (p *MCPProcessor) ProcessRequest(req models.JSONRPCRequest) (*models.MCPToo
 			// Return a standard MCP error if it does.
 			return &models.MCPToolResult{
 				Content: []models.MCPToolContent{
-					{Type: "text", Text: fmt.Sprintf("Error: Failed to marshal initialize response: %v (Code: %d)", err, models.ErrorCodeInternalError)},
+					{Type: "text", Text: fmt.Sprintf("Error: Failed to marshal initialize response: %v (Code: %d)", err, errors.CodeInternalError)},
 				},
 				IsError: true,
 			}, nil
@@ -140,7 +141,7 @@ func (p *MCPProcessor) ProcessRequest(req models.JSONRPCRequest) (*models.MCPToo
 		if err != nil {
 			return &models.MCPToolResult{
 				Content: []models.MCPToolContent{
-					{Type: "text", Text: fmt.Sprintf("Error: Failed to marshal tools/list response: %v (Code: %d)", err, models.ErrorCodeInternalError)},
+					{Type: "text", Text: fmt.Sprintf("Error: Failed to marshal tools/list response: %v (Code: %d)", err, errors.CodeInternalError)},
 				},
 				IsError: true,
 			}, nil
@@ -269,7 +270,7 @@ func (p *MCPProcessor) formatReadFileResult(content string, filename string, tot
 		if content == "" && reqStartLine > 0 { // Range requested yielded no content (e.g. start_line > totalLines)
 			startLineForDisplay = reqStartLine
 			// To show an empty range like "lines 5-4", end_line_for_display should be start_line_for_display - 1
-			endLineForDisplay = reqStartLine -1
+			endLineForDisplay = reqStartLine - 1
 			if endLineForDisplay < 0 { // Avoid negative line numbers if reqStartLine was 1 and content empty
 				endLineForDisplay = 0
 			}
@@ -277,11 +278,11 @@ func (p *MCPProcessor) formatReadFileResult(content string, filename string, tot
 			startLineForDisplay = 1
 			endLineForDisplay = 0
 		} else if content == "" && reqStartLine == 0 && reqEndLine == 0 { // Full read of empty file, but isRangeRequest might be true if service defaults it.
-            // This case should ideally be caught by totalLines == 0 && !isRangeRequest above.
-            // If isRangeRequest is true for a full empty file read, treat as lines 1-0 of 0 total.
-            startLineForDisplay = 1
-            endLineForDisplay = 0
-        } else {
+			// This case should ideally be caught by totalLines == 0 && !isRangeRequest above.
+			// If isRangeRequest is true for a full empty file read, treat as lines 1-0 of 0 total.
+			startLineForDisplay = 1
+			endLineForDisplay = 0
+		} else {
 			if reqStartLine > 0 {
 				startLineForDisplay = reqStartLine
 			} else {
@@ -302,7 +303,6 @@ func (p *MCPProcessor) formatReadFileResult(content string, filename string, tot
 	}
 	return fmt.Sprintf("%s\n\n%s", header, content)
 }
-
 
 // formatEditFileResult formats the result of an edit_file call. (Spec 3.4.3)
 func (p *MCPProcessor) formatEditFileResult(filename string, linesModified int, newTotalLines int, fileCreated bool) string {

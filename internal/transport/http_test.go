@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"file-editor-server/internal/errors" // Using for error codes if needed
-	"file-editor-server/internal/mcp"
 	"file-editor-server/internal/models"
 	"fmt"
 	"io"
@@ -162,7 +161,7 @@ func TestHTTPHandler_InvalidToolArguments(t *testing.T) {
 		body, _ := io.ReadAll(respMalformed.Body)
 		t.Errorf("Expected status %d for malformed JSON, got %d. Body: %s", http.StatusBadRequest, respMalformed.StatusCode, string(body))
 	}
-	respMalformed.Body.Close()
+	_ = respMalformed.Body.Close()
 
 	// JSON not matching schema (e.g. unknown field, if DisallowUnknownFields is active)
 	// models.ReadFileRequest has Name, StartLine, EndLine.
@@ -179,7 +178,7 @@ func TestHTTPHandler_InvalidToolArguments(t *testing.T) {
 	if errResp.Error.Code != errors.CodeParseError || !strings.Contains(errResp.Error.Message, "unknown field") {
 		t.Errorf("Unexpected error response for unknown field: %+v", errResp.Error)
 	}
-	respUnknown.Body.Close()
+	_ = respUnknown.Body.Close()
 }
 
 func TestHTTPHandler_MCPProcessorError(t *testing.T) {
@@ -207,11 +206,11 @@ func TestHTTPHandler_MCPProcessorError(t *testing.T) {
 	if errResp.Error.Code != errors.CodeInternalError || !strings.Contains(errResp.Error.Message, "internal processor issue") {
 		t.Errorf("Unexpected error response for MCPProcessor error: %+v", errResp.Error)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestHTTPHandler_TransportErrors(t *testing.T) {
-	mockProcessor := &MockMCPProcessor{} // Not called for these
+	mockProcessor := &MockMCPProcessor{}             // Not called for these
 	handler := NewHTTPHandler(nil, mockProcessor, 1) // 1MB max size
 
 	// Test MethodNotAllowed
@@ -260,7 +259,7 @@ func TestHTTPHandler_HealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET request to /health failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status %d for /health, got %d", http.StatusOK, resp.StatusCode)
