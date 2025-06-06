@@ -205,28 +205,28 @@ type mockLockManager struct {
 func newMockLockManager() *mockLockManager {
 	return &mockLockManager{locksHeld: make(map[string]bool)}
 }
-func (m *mockLockManager) AcquireLock(filename string, timeout time.Duration) error {
+
+func (m *mockLockManager) AcquireLock(filename string, timeout time.Duration) (*lock.FileLock, error) {
 	if m.acquireShouldFail {
-		return lock.ErrLockTimeout // Simulate a timeout
+		return nil, lock.ErrLockTimeout
 	}
 	if m.locksHeld[filename] {
-		return lock.ErrLockTimeout // Already locked by someone else in this mock
+		return nil, lock.ErrLockTimeout
 	}
 	m.locksHeld[filename] = true
-	return nil
+	return &lock.FileLock{FilePath: filename}, nil
 }
-func (m *mockLockManager) ReleaseLock(filename string) error {
+
+func (m *mockLockManager) ReleaseLock(l *lock.FileLock) error {
 	if m.releaseShouldFail {
 		return fmt.Errorf("mock release error")
 	}
-	if !m.locksHeld[filename] {
-		return lock.ErrLockNotFound
+	if l == nil || !m.locksHeld[l.FilePath] {
+		return lock.ErrNilLock
 	}
-	delete(m.locksHeld, filename)
+	delete(m.locksHeld, l.FilePath)
 	return nil
 }
-func (m *mockLockManager) GetCurrentLockCount() int { return len(m.locksHeld) }
-func (m *mockLockManager) CleanupExpiredLocks()     {}
 
 // --- Test Setup ---
 var testConfig *config.Config
