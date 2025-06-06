@@ -13,16 +13,15 @@ The File Editing Server SHALL implement a high-performance binary providing text
 **Included in Implementation:**
 
 - Single binary executable with command-line argument configuration
-- MCP protocol server with two transport options: HTTP OR stdio JSON-RPC communication
-- Three MCP tools: list_files, read_file and edit_file with complete functionality
+- MCP protocol server with stdio transport (primary) and optional HTTP transport
+- Three MCP tools exposing file operations: list_files, read_file and edit_file
 - Text file reading with optional line range selection capabilities
-- Text file editing via line-based diff operations and append functionality
-- New file creation within designated folder boundaries
+- Text file editing via line-based diff operations and file creation
 - Flat file storage abstraction using filename-only references
 - Cross-platform file system operations supporting Windows, macOS, Linux
 - UTF-8 text encoding support with validation
-- Concurrent request handling with filesystem-level locking mechanisms
-- Comprehensive error handling for all file system operations
+- Concurrent request handling with filesystem-level file locking (OS-level, not application-level)
+- Comprehensive error handling for all file system operations through MCP tool results
 
 **Excluded from Implementation:**
 
@@ -32,8 +31,9 @@ The File Editing Server SHALL implement a high-performance binary providing text
 - File permissions modification or ownership changes
 - Version control integration or file history tracking
 - Backup, recovery, or rollback mechanisms
-- User authentication or authorization beyond transport security
+- User authentication or authorization beyond MCP protocol requirements
 - File watching, real-time notifications, or event streaming
+- REST API endpoints or direct HTTP file access
 - Configuration files or complex setup procedures
 
 ### 1.2 Platform and Environment Requirements
@@ -43,9 +43,7 @@ The File Editing Server SHALL implement a high-performance binary providing text
 **Target Platforms:** Cross-compiled binaries for:
 
 - Linux (x86_64, aarch64)
-- Linux (x86_64, arm64)
 - macOS (x86_64, aarch64)
-- macOS (x86_64, arm64)
 - Windows (x86_64)
   **File System Requirements:** POSIX-compliant or Windows NTFS with UTF-8 support  
   **Text Encoding:** UTF-8 exclusively with validation  
@@ -333,8 +331,8 @@ FUNCTION edit_file(filename, edits_array):
     file_path = join(working_directory, filename)
     file_exists = check_file_exists(file_path)
     
-    // Acquire exclusive file lock
-    acquire_file_lock(filename)
+    // Acquire exclusive OS-level file lock (REQUIRED)
+    filesystem_lock_handle = acquire_os_file_lock(file_path)
     TRY
         // Content initialization branch
         IF file_exists THEN
@@ -374,7 +372,7 @@ FUNCTION edit_file(filename, edits_array):
     CATCH filesystem_error:
         RETURN tool_error_result("Error: Filesystem error: {filesystem_error.message}")
     FINALLY
-        release_file_lock(filename)
+        release_os_file_lock(filesystem_lock_handle)
     END TRY
 END FUNCTION
 ```
@@ -441,40 +439,53 @@ END FUNCTION
 
 ### 2.4 Concurrency and State Management
 
-**Filesystem Locking Algorithm:**
+**OS-Level Filesystem Locking Algorithm:**
 
 ```pseudocode
 FUNCTION acquire_file_lock(file_path):
-    // Use OS-level file locking instead of application-level
-    lock_handle = create_file_lock(file_path, exclusive=true)
+    // MUST use OS-provided file locking (not application locks)
+    // Linux/macOS: flock() or fcntl() 
+    // Windows: LockFileEx()
+    
+    lock_handle = create_exclusive_file_lock(file_path)
     
     TRY
         success = acquire_lock_with_timeout(lock_handle, timeout=30_seconds)
         IF NOT success THEN
-            RETURN error "Failed to acquire file lock within timeout"
+            RETURN error "Failed to acquire filesystem lock within timeout"
         END IF
         RETURN lock_handle
     CATCH lock_error:
-        RETURN error "Lock acquisition failed: {lock_error}"
+        RETURN error "OS filesystem lock acquisition failed: {lock_error}"
     END TRY
 END FUNCTION
 
 FUNCTION release_file_lock(lock_handle):
     TRY
-        release_lock(lock_handle)
+        release_exclusive_lock(lock_handle)  // OS releases lock
         close_lock_handle(lock_handle)
     CATCH release_error:
-        log_error("Failed to release file lock", release_error)
+        log_error("Failed to release filesystem lock", release_error)
     END TRY
+    // Note: OS automatically releases locks on process termination
 END FUNCTION
 ```
 
-**Filesystem Locking Benefits:**
+**Filesystem Locking Benefits (vs Application Locking):**
 
 - Multiple server instances can coordinate access to same files
-- OS handles lock cleanup on process termination
-- No artificial concurrency limits - filesystem manages queuing
-- Cross-process synchronization without shared memory
+- Operating system handles lock cleanup on process termination automatically
+- No artificial concurrency limits - filesystem manages queuing naturally
+- Cross-process synchronization without shared memory or coordination mechanisms
+- Prevents race conditions even with multiple server processes
+- No application-level lock state to maintain or corrupt
+
+**Required Implementation:**
+
+- MUST use OS-level file locking primitives (flock, fcntl, LockFileEx)
+- MUST NOT implement application-level lock maps or in-memory locking
+- MUST allow OS to handle lock cleanup on process crashes or termination
+- MUST NOT artificially limit concurrent access beyond filesystem capabilities
 
 **State Transition Requirements:**
 
@@ -997,9 +1008,10 @@ Error: {error_message}
 **Concurrent Operation Requirements:**
 
 - Server MUST handle concurrent file operations without artificial limits
-- Filesystem-level locking MUST prevent race conditions with zero data corruption incidents
-- Lock acquisition timeout MUST be 30 seconds maximum
-- Multiple server instances MUST coordinate access through filesystem locks
+- Filesystem-level file locking (OS-provided) MUST prevent race conditions with zero data corruption incidents
+- OS-level lock acquisition timeout MUST be 30 seconds maximum
+- Multiple server instances MUST coordinate access through filesystem locks (flock, fcntl, LockFileEx)
+- Application-level lock maps or in-memory locking MUST NOT be used
 
 **Binary Size Requirements:**
 
@@ -1024,7 +1036,9 @@ Error: {error_message}
 - Path traversal attempts (../, .., absolute paths) MUST be rejected with error code -32602
 - Symbolic links outside working directory MUST NOT be followed
 - Temporary files MUST be created with restrictive permissions (600 octal)
-- File locks MUST be released automatically on process termination
+- OS-level file locks (flock/fcntl/LockFileEx) MUST be used for concurrency control
+- File locks MUST be released automatically on process termination by the operating system
+- Application-level locking mechanisms MUST NOT be implemented
 
 **Resource Protection Requirements:**
 
@@ -1067,48 +1081,55 @@ Error: {error_message}
 
 ```pseudocode
 // Core MCP Server Structure
-STRUCTURE MCPServer:
+STRUCTURE MCPFileServer:
     working_directory: string
     max_file_size: integer
     operation_timeout: duration
     transport_type: string
-    server_info: mcp_server_info
+    mcp_tools: mcp_tool_registry
     
-    FUNCTION initialize(config: server_config) -> initialization_result
-    FUNCTION start() -> void
-    FUNCTION stop() -> void
+    FUNCTION initialize_mcp_session(client_info) -> initialization_result
     FUNCTION handle_mcp_request(mcp_request) -> mcp_response
+    FUNCTION start_transport() -> void
+    FUNCTION stop_transport() -> void
 
-// MCP Tool Operations Module
-STRUCTURE MCPTools:
-    FUNCTION list_files(working_dir: string) -> tool_result
-    FUNCTION read_file(file_path: string, start_line: integer, end_line: integer) -> tool_result
-    FUNCTION edit_file(file_path: string, edits: edit_array, append: string) -> tool_result
-    FUNCTION validate_tool_arguments(tool_name: string, arguments: map) -> validation_result
+// MCP Tool Registry (No REST endpoints)
+STRUCTURE MCPToolRegistry:
+    FUNCTION get_available_tools() -> tool_definitions_with_annotations
+    FUNCTION execute_tool(tool_name, arguments) -> tool_result
+    FUNCTION validate_tool_arguments(tool_name, arguments) -> validation_result
 
-// MCP Protocol Handlers
-STRUCTURE MCPHTTPHandler:
-    FUNCTION start_mcp_server(port: integer) -> server_handle
-    FUNCTION handle_mcp_over_http(http_request) -> http_response
+// File Operation Tools (MCP Tools Only)
+STRUCTURE FileOperationTools:
+    FUNCTION list_files() -> mcp_tool_result
+    FUNCTION read_file(name, start_line, end_line) -> mcp_tool_result  
+    FUNCTION edit_file(name, edits) -> mcp_tool_result
 
+// MCP Protocol Transport Handlers
 STRUCTURE MCPStdioHandler:
-    FUNCTION start_mcp_stdio_loop() -> void
-    FUNCTION handle_mcp_over_stdio(jsonrpc_request) -> jsonrpc_response
+    FUNCTION start_mcp_stdio_session() -> void
+    FUNCTION handle_mcp_jsonrpc_message(message) -> response
 
-// File System Operations (unchanged)
+STRUCTURE MCPHTTPHandler:
+    FUNCTION start_mcp_http_server(port) -> server_handle
+    FUNCTION handle_mcp_over_http(http_request) -> http_response
+    // Note: Single MCP endpoint, NOT multiple REST endpoints
+
+// File System Operations (Internal Only)
 STRUCTURE FileSystemUtils:
-    FUNCTION read_file_content(file_path: string) -> file_content
-    FUNCTION write_file_atomic(file_path: string, content: string) -> write_result
-    FUNCTION acquire_file_lock(file_path: string) -> lock_handle
+    FUNCTION read_file_content(file_path) -> file_content
+    FUNCTION write_file_atomic(file_path, content) -> write_result
+    FUNCTION acquire_file_lock(file_path) -> lock_handle
     FUNCTION release_file_lock(lock_handle) -> void
 ```
 
 **Component Relationships:**
 
-- MCPServer coordinates all MCP protocol handling and tool execution
-- FileOperations handles core business logic for the three tools
-- Transport handlers manage MCP protocol over HTTP vs stdio
-- FileSystemUtils provides low-level file operations with error handling
+- MCPFileServer coordinates MCP protocol handling and routes tool calls
+- MCPToolRegistry manages the three file operation tools (no REST endpoints)
+- FileOperationTools implements file operations as MCP tools exclusively
+- Transport handlers serve MCP protocol only (never direct file access)
+- FileSystemUtils provides internal file operations (not exposed via any API)
 
 ### 5.2 Data Flow Implementation
 
@@ -1191,7 +1212,7 @@ END FUNCTION
 
 ### 5.3 Concurrency Implementation
 
-**Filesystem-Level Lock Manager:**
+**Filesystem-Level Lock Manager (Required Implementation):**
 
 ```pseudocode
 CLASS FilesystemLockManager:
@@ -1201,11 +1222,15 @@ CLASS FilesystemLockManager:
         start_time = current_time()
         
         TRY
-            // Use OS-level file locking (flock, fcntl, or LockFileEx)
+            // REQUIRED: Use OS-level file locking mechanisms
+            // Linux/macOS: flock() with LOCK_EX flag
+            // Windows: LockFileEx() with LOCKFILE_EXCLUSIVE_LOCK
+            // NOT application-level locks or lock maps
+            
             lock_handle = create_exclusive_file_lock(file_path)
             
             WHILE current_time() - start_time < lock_timeout DO
-                lock_result = try_acquire_lock(lock_handle)
+                lock_result = try_acquire_os_lock(lock_handle)
                 
                 IF lock_result.success THEN
                     log_lock_acquired(file_path, current_time() - start_time)
@@ -1216,26 +1241,36 @@ CLASS FilesystemLockManager:
             END WHILE
             
             close_lock_handle(lock_handle)
-            THROW timeout_error("Failed to acquire filesystem lock within timeout")
+            THROW timeout_error("Failed to acquire OS filesystem lock within timeout")
             
         CATCH filesystem_error:
-            THROW lock_error("Filesystem lock error: {filesystem_error}")
+            THROW lock_error("OS filesystem lock error: {filesystem_error}")
         END TRY
     END FUNCTION
     
     FUNCTION release_file_lock(lock_handle: lock_handle) -> void:
         TRY
-            release_exclusive_lock(lock_handle)
+            // OS releases the exclusive lock
+            release_exclusive_os_lock(lock_handle)
             close_lock_handle(lock_handle)
             log_lock_released(lock_handle.file_path)
         CATCH release_error:
-            log_error("Failed to release filesystem lock", release_error)
+            log_error("Failed to release OS filesystem lock", release_error)
         END TRY
     END FUNCTION
     
-    // No cleanup needed - OS handles lock cleanup on process termination
+    // No cleanup methods needed - OS handles lock cleanup automatically
+    // on process termination, crash, or abnormal exit
 END CLASS
 ```
+
+**Critical Requirements:**
+
+- MUST use OS-provided file locking (flock, fcntl, LockFileEx)
+- MUST NOT implement application-level lock maps or shared memory locking
+- MUST NOT use thread-level or process-level locking mechanisms
+- MUST allow multiple server instances to coordinate through filesystem
+- MUST rely on OS for automatic lock cleanup on process termination
 
 ### 5.4 Error Handling Strategy
 
@@ -1759,31 +1794,31 @@ test_categories = {
     "mcp_tools": {
         minimum_coverage: 95,
         test_cases: [
-            "successful_file_listing",
-            "successful_file_reading",
-            "line_range_processing",
-            "edit_operation_types",
-            "atomic_write_behavior",
-            "tool_error_handling"
+            "successful_file_listing_via_mcp_tool",
+            "successful_file_reading_via_mcp_tool",
+            "line_range_processing_via_mcp_tool",
+            "edit_operation_types_via_mcp_tool",
+            "atomic_write_behavior_via_mcp_tool",
+            "tool_error_handling_via_mcp_results"
         ]
     },
     "concurrency": {
         minimum_coverage: 90,
         test_cases: [
-            "concurrent_tool_calls",
-            "exclusive_write_locking",
-            "filesystem_lock_behavior",
-            "multi_instance_coordination"
+            "concurrent_mcp_tool_calls",
+            "exclusive_write_locking_via_tools",
+            "os_filesystem_lock_behavior",
+            "multi_server_instance_coordination_via_filesystem_locks"
         ]
     },
     "mcp_protocol": {
         minimum_coverage: 95,
         test_cases: [
             "mcp_initialization_sequence",
-            "tools_list_response",
-            "tool_call_execution",
-            "error_response_formatting",
-            "jsonrpc_compliance"
+            "tools_list_response_with_annotations",
+            "tool_call_execution_and_results",
+            "tool_error_response_formatting",
+            "jsonrpc_protocol_compliance"
         ]
     }
 }
@@ -1959,9 +1994,9 @@ FUNCTION benchmark_file_operations():
             iterations: 100
         },
         {
-            name: "filesystem_lock_performance",
+            name: "os_filesystem_lock_performance",
             file_size: "100KB",
-            operation: "concurrent_edits",
+            operation: "concurrent_edits_with_os_locks",
             concurrent_processes: 5,
             target_time: "200ms",
             iterations: 50
