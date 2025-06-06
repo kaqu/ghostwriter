@@ -9,7 +9,6 @@ import (
 	"file-editor-server/internal/service"
 	"file-editor-server/internal/transport"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,7 +28,7 @@ func main() {
 
 	// 5. Initialize Dependencies
 	fsAdapter := filesystem.NewDefaultFileSystemAdapter()
-	lockManager := lock.NewLockManager(math.MaxInt32) // Updated: Removed defaultLockTimeout argument
+	lockManager := lock.NewLockManager()
 	fileService, err := service.NewDefaultFileOperationService(fsAdapter, lockManager, cfg)
 	if err != nil {
 		log.Printf("CRITICAL: Failed to initialize file operation service: %v\n", err)
@@ -60,7 +59,7 @@ func main() {
 		// Initialize MCP processor for HTTP mode
 		mcpProcessor := mcp.NewMCPProcessor(fileService)
 		// Note: MaxFileSizeMB is a placeholder for the request size limit.
-		httpHandler := transport.NewHTTPHandler(fileService, mcpProcessor, cfg.MaxFileSizeMB)
+		httpHandler := transport.NewHTTPHandler(mcpProcessor, cfg.MaxFileSizeMB)
 		httpServer = httpHandler.Server // Get the server instance from the handler
 
 		// httpHandler.StartServer will be modified to return the *http.Server instance

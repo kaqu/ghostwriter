@@ -391,14 +391,13 @@ func (s *DefaultFileOperationService) EditFile(req models.EditFileRequest) (
 		return filename, 0, 0, false, errRet
 	}
 
-	lockErr := s.lockManager.AcquireLock(filePath, s.opTimeout)
+	lockHandle, lockErr := s.lockManager.AcquireLock(filePath, s.opTimeout)
 	if lockErr != nil {
 		errRet = errors.NewOperationLockFailedError(filename, "edit", lockErr.Error())
 		return filename, 0, 0, false, errRet
 	}
 	defer func() {
-		if err := s.lockManager.ReleaseLock(filePath); err != nil {
-			// Log this error, but can't return it from defer
+		if err := s.lockManager.ReleaseLock(lockHandle); err != nil {
 			fmt.Printf("Error releasing lock for file '%s' in defer: %v\n", filename, err)
 		}
 	}()
