@@ -1,11 +1,20 @@
 mod app;
+mod cli;
 mod editor;
 mod files;
 mod network;
 mod ui;
 
+use clap::Parser;
+
 fn main() {
-    println!("Hello, world!");
+    let args = cli::Args::parse();
+    if let Err(e) = args.validate() {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+    println!("Parsed arguments: {args:?}");
+    // Placeholder module calls
     app::hello_app();
     editor::hello_editor();
     files::hello_files();
