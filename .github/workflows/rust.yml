@@ -18,6 +18,17 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Install formatting and lint tools
+        run: rustup component add rustfmt clippy
+
+      - name: Check formatting
+        working-directory: ./ghostwriter
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        working-directory: ./ghostwriter
+        run: cargo clippy -- -D warnings
+
       - name: Run cargo test
         working-directory: ./ghostwriter # Added working-directory
         run: cargo test

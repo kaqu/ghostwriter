@@ -45,7 +45,10 @@ mod tests {
 
         // crossterm
         let styled_text = "Hello".blue().on_yellow();
-        assert!(!styled_text.to_string().is_empty(), "Crossterm styling failed");
+        assert!(
+            !styled_text.to_string().is_empty(),
+            "Crossterm styling failed"
+        );
 
         // ratatui
         let _block = Block::default();
@@ -56,7 +59,9 @@ mod tests {
         struct TestStruct {
             field: String,
         }
-        let test_instance = TestStruct { field: "test".to_string() };
+        let test_instance = TestStruct {
+            field: "test".to_string(),
+        };
         let json_result = serde_json::to_string(&test_instance);
         assert!(json_result.is_ok(), "Serde serialization failed");
 
