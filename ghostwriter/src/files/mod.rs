@@ -3,6 +3,7 @@
 pub mod file_lock;
 pub mod file_manager;
 pub mod file_watcher;
+pub mod workspace;
 
 pub fn hello_files() {
     println!("Hello from files module!");
