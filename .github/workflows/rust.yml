@@ -1,0 +1,23 @@
+name: Rust CI
+
+on:
+  pull_request:
+    branches: [ main ] # Or your default branch
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run cargo test
+        working-directory: ./ghostwriter # Added working-directory
+        run: cargo test

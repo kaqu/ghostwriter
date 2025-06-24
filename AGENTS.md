@@ -15,12 +15,22 @@ This file defines rules for AI agents working in this repository.
 2. Run linters and unit tests
 
 ## Running formatter
-TODO...
+To format the code, navigate to the `ghostwriter` directory and run:
+```bash
+cargo fmt
+```
 
 ## Running linter
-TODO...
+To lint the code, navigate to the `ghostwriter` directory and run:
+```bash
+cargo clippy
+```
 
 ## Running tests
-TODO...
+To run tests, navigate to the `ghostwriter` directory and run:
+```bash
+cargo test
+```
+Our GitHub CI also runs `cargo test` automatically for every pull request.
 
 Update this file with additional rules (tests, linting, style) as the project grows.
