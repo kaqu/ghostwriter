@@ -50,6 +50,12 @@ impl From<tokio_tungstenite::tungstenite::Error> for GhostwriterError {
     }
 }
 
+impl From<notify::Error> for GhostwriterError {
+    fn from(err: notify::Error) -> Self {
+        GhostwriterError::Io(std::io::Error::other(err))
+    }
+}
+
 /// Error type carrying additional context string.
 #[derive(Debug)]
 pub struct ContextualError {
