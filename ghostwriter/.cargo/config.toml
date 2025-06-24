@@ -1,0 +1,24 @@
+# Configuration for building statically linked binaries on Linux.
+# These flags help create more portable executables for Linux environments.
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# For fully static Linux binaries (no dynamic libc dependency), MUSL targets are often preferred.
+# These also use static linking.
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# macOS Compilation Notes:
+# - macOS targets (e.g., x86_64-apple-darwin, aarch64-apple-darwin) are typically NOT statically linked
+#   in the same way as Linux/MUSL. They rely on dynamic linking against system frameworks.
+# - Building for macOS is best done on a macOS machine or a CI environment with the macOS SDK.
+# - The above Linux-specific flags do not apply to macOS targets.
+# - To build for macOS, ensure the respective targets are installed via `rustup target add ...`
+#   and then use `cargo build --target <macos_target_triple>`.
