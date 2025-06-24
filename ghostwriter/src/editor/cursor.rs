@@ -274,4 +274,33 @@ mod tests {
         c.validate(&r);
         assert_eq!(c.position(), (1, 3));
     }
+
+    #[test]
+    fn test_cursor_boundary_movements() {
+        let r = rope("line1\nline2");
+        let mut c = Cursor::new();
+        c.move_left(&r);
+        assert_eq!(c.position(), (0, 0));
+        c.move_doc_end(&r);
+        let end = c.position();
+        c.move_right(&r);
+        assert_eq!(c.position(), end);
+        c.move_doc_start();
+        c.move_up(&r);
+        assert_eq!(c.position(), (0, 0));
+        c.move_doc_end(&r);
+        c.move_down(&r);
+        assert_eq!(c.position(), end);
+    }
+
+    #[test]
+    fn test_cursor_word_navigation_edges() {
+        let r = rope("foo bar");
+        let mut c = Cursor::new();
+        c.move_prev_word(&r);
+        assert_eq!(c.position(), (0, 0));
+        c.move_doc_end(&r);
+        c.move_next_word(&r);
+        assert_eq!(c.position(), (0, 7));
+    }
 }
