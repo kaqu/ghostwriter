@@ -19,6 +19,9 @@ rustflags = ["-C", "target-feature=+crt-static"]
 [target.aarch64-unknown-linux-musl]
 rustflags = ["-C", "target-feature=+crt-static"]
 
+[target.aarch64-apple-darwin]
+# macOS builds use dynamic linking; no special rustflags are required.
+
 # macOS Compilation Notes:
 # - macOS targets (e.g., x86_64-apple-darwin, aarch64-apple-darwin) are typically NOT statically linked
 #   in the same way as Linux/MUSL. They rely on dynamic linking against system frameworks.
