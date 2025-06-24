@@ -134,4 +134,17 @@ mod tests {
         sel.normalize();
         assert_eq!(sel.copy(&rope), "b\ncd");
     }
+
+    #[test]
+    fn test_selection_empty_ops() {
+        let rope = Rope::from_str("abc");
+        let cursor = Cursor::new();
+        let sel = Selection::new(cursor);
+        assert_eq!(sel.copy(&rope), "");
+
+        let mut r2 = rope.clone();
+        sel.delete(&mut r2);
+        assert_eq!(r2.as_string(), rope.as_string());
+        assert_eq!(sel.cut(&mut r2), "");
+    }
 }

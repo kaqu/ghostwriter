@@ -187,4 +187,30 @@ mod tests {
         assert!(stack.undo(&mut rope, &mut cursor));
         assert_eq!(cursor, before);
     }
+
+    #[test]
+    fn test_undo_redo_empty_stack() {
+        let mut stack = UndoStack::new(1);
+        let mut rope = Rope::new();
+        let mut cursor = Cursor::new();
+        assert!(!stack.undo(&mut rope, &mut cursor));
+        assert!(!stack.redo(&mut rope, &mut cursor));
+    }
+
+    #[test]
+    fn test_clear_stack() {
+        let mut rope = Rope::from_str("a");
+        let mut cursor = Cursor::new();
+        let mut stack = UndoStack::new(10);
+        stack.push(UndoRecord {
+            op: UndoOperation::Insert {
+                index: 0,
+                text: "a".to_string(),
+            },
+            before: cursor,
+            after: cursor,
+        });
+        stack.clear();
+        assert!(!stack.undo(&mut rope, &mut cursor));
+    }
 }

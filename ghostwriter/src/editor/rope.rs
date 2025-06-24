@@ -294,4 +294,34 @@ mod tests {
         let r = Rope::from_bytes(&bytes);
         assert_eq!(r.as_string(), "f<80>g");
     }
+
+    #[test]
+    fn test_rope_insert_empty_and_delete_all() {
+        let mut r = Rope::new();
+        r.insert(0, "abc");
+        assert_eq!(r.as_string(), "abc");
+        r.delete(0..r.len_chars());
+        assert!(r.as_string().is_empty());
+    }
+
+    #[test]
+    fn test_rope_slice_across_chunks() {
+        let mut data = "a".repeat(CHUNK_SIZE + 10);
+        data.push_str(&"b".repeat(20));
+        let r = Rope::from_str(&data);
+        let slice = r.slice(CHUNK_SIZE - 5..CHUNK_SIZE + 15);
+        assert_eq!(slice.chars().count(), 20);
+    }
+
+    #[test]
+    fn test_char_at_out_of_bounds() {
+        let r = Rope::from_str("abc");
+        assert_eq!(r.char_at(5), None);
+    }
+
+    #[test]
+    fn test_line_at_out_of_bounds() {
+        let r = Rope::from_str("a\nb");
+        assert_eq!(r.line_at(5), None);
+    }
 }
