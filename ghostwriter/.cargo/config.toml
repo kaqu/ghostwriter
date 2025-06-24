@@ -1,8 +1,12 @@
 # Configuration for building statically linked binaries on Linux.
 # These flags help create more portable executables for Linux environments.
 
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-feature=+crt-static"]
+
+# Host builds should remain dynamically linked. Static linking is only
+# configured for cross compilation targets to avoid issues building
+# proc-macro crates.
+# [target.x86_64-unknown-linux-gnu]
+# rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "target-feature=+crt-static"]
