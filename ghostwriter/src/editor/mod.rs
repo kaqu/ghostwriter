@@ -1,4 +1,5 @@
 // editor module
+pub mod cursor;
 pub mod rope;
 
 pub fn hello_editor() {
