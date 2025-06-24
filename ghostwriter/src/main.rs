@@ -27,6 +27,10 @@ fn main() {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::assertions_on_constants,
+    clippy::needless_borrows_for_generic_args
+)]
 mod tests {
     // Import common dependencies to check if they load
     use super::*;

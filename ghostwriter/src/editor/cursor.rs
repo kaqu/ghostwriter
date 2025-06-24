@@ -4,8 +4,8 @@ use crate::editor::rope::Rope;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub struct Cursor {
-    line: usize,
-    column: usize,
+    pub line: usize,
+    pub column: usize,
 }
 
 #[allow(dead_code)]
@@ -52,6 +52,62 @@ impl Cursor {
         if let Some(line) = text.lines().nth(self.line) {
             self.column = line.chars().count();
         }
+    }
+
+    /// Move the cursor one character to the left.
+    pub fn move_left(&mut self, rope: &Rope) {
+        let text = normalized_text(rope);
+        let idx = line_col_to_index(&text, self.line, self.column);
+        if idx == 0 {
+            return;
+        }
+        let prev_idx = text[..idx]
+            .char_indices()
+            .last()
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        let (line, col) = index_to_line_col(&text, prev_idx);
+        self.line = line;
+        self.column = col;
+    }
+
+    /// Move the cursor one character to the right.
+    pub fn move_right(&mut self, rope: &Rope) {
+        let text = normalized_text(rope);
+        let idx = line_col_to_index(&text, self.line, self.column);
+        if idx >= text.len() {
+            return;
+        }
+        let next_idx = idx
+            + text[idx..]
+                .chars()
+                .next()
+                .map(|c| c.len_utf8())
+                .unwrap_or(0);
+        let (line, col) = index_to_line_col(&text, next_idx);
+        self.line = line;
+        self.column = col;
+    }
+
+    /// Move the cursor up one line, keeping column if possible.
+    pub fn move_up(&mut self, rope: &Rope) {
+        if self.line == 0 {
+            self.column = 0;
+            return;
+        }
+        self.line -= 1;
+        self.validate(rope);
+    }
+
+    /// Move the cursor down one line, keeping column if possible.
+    pub fn move_down(&mut self, rope: &Rope) {
+        let text = normalized_text(rope);
+        if self.line + 1 >= text.lines().count() {
+            self.move_doc_end(rope);
+            return;
+        }
+        self.line += 1;
+        self.validate(rope);
     }
 
     /// Move the cursor to the previous word start.
@@ -119,13 +175,11 @@ impl Cursor {
     }
 }
 
-#[allow(dead_code)]
-fn normalized_text(rope: &Rope) -> String {
+pub(crate) fn normalized_text(rope: &Rope) -> String {
     rope.as_string().replace("\r\n", "\n").replace('\r', "\n")
 }
 
-#[allow(dead_code)]
-fn line_col_to_index(text: &str, line: usize, column: usize) -> usize {
+pub(crate) fn line_col_to_index(text: &str, line: usize, column: usize) -> usize {
     let mut l = 0;
     let mut c = 0;
     for (i, ch) in text.char_indices() {
@@ -145,8 +199,7 @@ fn line_col_to_index(text: &str, line: usize, column: usize) -> usize {
     text.len()
 }
 
-#[allow(dead_code)]
-fn index_to_line_col(text: &str, idx: usize) -> (usize, usize) {
+pub(crate) fn index_to_line_col(text: &str, idx: usize) -> (usize, usize) {
     let mut l = 0;
     let mut c = 0;
     for (i, ch) in text.char_indices() {
