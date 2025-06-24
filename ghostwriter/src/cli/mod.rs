@@ -36,17 +36,16 @@ pub struct Args {
 
 impl Args {
     /// Validate file or directory paths exist when provided
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> crate::error::Result<()> {
         if let Some(path) = &self.path {
             if !path.exists() {
-                return Err(format!("path does not exist: {}", path.display()));
+                return Err(crate::error::GhostwriterError::FileNotFound);
             }
         }
         if let Some(dir) = &self.server {
             if !dir.is_dir() {
-                return Err(format!(
-                    "server path must be a directory: {}",
-                    dir.display()
+                return Err(crate::error::GhostwriterError::InvalidArgument(
+                    "server path must be a directory".into(),
                 ));
             }
         }

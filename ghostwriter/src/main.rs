@@ -1,15 +1,19 @@
 mod app;
 mod cli;
 mod editor;
+mod error;
 mod files;
 mod network;
 mod ui;
 
 use clap::Parser;
+use log::error;
 
 fn main() {
+    env_logger::init();
     let args = cli::Args::parse();
     if let Err(e) = args.validate() {
+        error!("{e}");
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
