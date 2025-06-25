@@ -56,6 +56,12 @@ impl From<notify::Error> for GhostwriterError {
     }
 }
 
+impl From<serde_json::Error> for GhostwriterError {
+    fn from(err: serde_json::Error) -> Self {
+        GhostwriterError::InvalidArgument(err.to_string())
+    }
+}
+
 /// Error type carrying additional context string.
 #[derive(Debug)]
 pub struct ContextualError {
