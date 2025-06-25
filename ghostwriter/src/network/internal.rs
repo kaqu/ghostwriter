@@ -28,7 +28,7 @@ impl InternalServer {
                 eprintln!("internal server error: {e}");
             }
         });
-        let client = GhostwriterClient::new(format!("ws://{}", addr), key);
+        let client = GhostwriterClient::new(format!("ws://{}", addr), key)?;
         Ok((Self { addr, handle }, client))
     }
 
@@ -115,6 +115,7 @@ mod tests {
         drop(server);
         tokio::time::sleep(Duration::from_millis(100)).await;
         let res = GhostwriterClient::new(format!("ws://{}", addr), None)
+            .unwrap()
             .connect()
             .await;
         assert!(res.is_err());
