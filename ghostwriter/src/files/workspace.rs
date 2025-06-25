@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use crate::error::{GhostwriterError, Result};
 
 /// File or directory entry information
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirEntryInfo {
     pub name: String,
     pub is_dir: bool,
