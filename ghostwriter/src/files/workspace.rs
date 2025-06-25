@@ -32,6 +32,11 @@ impl WorkspaceManager {
         Ok(Self { root: canonical })
     }
 
+    /// Return the workspace root directory path.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Resolve an existing path within the workspace.
     fn resolve_existing(&self, path: &Path) -> Result<PathBuf> {
         let joined = if path.is_absolute() {

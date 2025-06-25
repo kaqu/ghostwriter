@@ -22,7 +22,6 @@ fn main() {
     app::hello_app();
     editor::hello_editor();
     network::hello_network();
-    ui::hello_ui();
 }
 
 #[cfg(test)]
@@ -100,7 +99,6 @@ mod tests {
         editor::hello_editor();
         let _ = files::file_manager::FileManager::is_binary(b"test");
         network::hello_network();
-        ui::hello_ui();
         assert!(true, "Module functions callable");
     }
 }
