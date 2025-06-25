@@ -155,4 +155,12 @@ mod tests {
         search.update(&rope, "foo", false, true).unwrap();
         assert_eq!(search.matches.len(), 1);
     }
+
+    #[test]
+    fn test_invalid_regex_error() {
+        let rope = Rope::from_str("content");
+        let mut search = Search::new();
+        let res = search.update(&rope, "(", true, true);
+        assert!(res.is_err(), "invalid regex should return error");
+    }
 }
