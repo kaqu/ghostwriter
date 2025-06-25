@@ -1,4 +1,5 @@
 // FileLock provides exclusive file locking with automatic cleanup.
+#![allow(dead_code)]
 
 use std::fs::{File, OpenOptions};
 use std::path::Path;
