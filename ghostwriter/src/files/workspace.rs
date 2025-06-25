@@ -129,6 +129,18 @@ impl WorkspaceManager {
         fs::rename(&src, &dst)?;
         Ok(())
     }
+
+    /// Search for a pattern across all files in the workspace. Results are
+    /// limited by `limit` to avoid excessive memory usage.
+    pub fn search(
+        &self,
+        pattern: &str,
+        regex: bool,
+        case_sensitive: bool,
+        limit: usize,
+    ) -> Result<Vec<crate::files::search::SearchResult>> {
+        crate::files::search::search_dir(self.root(), pattern, regex, case_sensitive, limit)
+    }
 }
 
 #[cfg(test)]
