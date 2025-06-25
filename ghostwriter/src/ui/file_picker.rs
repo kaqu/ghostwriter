@@ -19,40 +19,66 @@ pub struct FileNode {
     pub path: PathBuf,
     pub is_dir: bool,
     pub children: Vec<FileNode>,
+    pub loaded: bool,
     pub expanded: bool,
 }
 
 #[allow(dead_code)]
 impl FileNode {
-    fn load(ws: &WorkspaceManager, path: &Path) -> Result<Self> {
+    fn load_root(ws: &WorkspaceManager) -> Result<Self> {
+        let mut node = FileNode {
+            name: String::new(),
+            path: ws.root().to_path_buf(),
+            is_dir: true,
+            children: Vec::new(),
+            loaded: false,
+            expanded: true,
+        };
+        node.load_children(ws)?;
+        Ok(node)
+    }
+
+    fn load_children(&mut self, ws: &WorkspaceManager) -> Result<()> {
+        if !self.is_dir || self.loaded {
+            return Ok(());
+        }
         let mut children = Vec::new();
-        for entry in ws.list_dir(path)? {
-            let child_path = path.join(&entry.name);
+        for entry in ws.list_dir(&self.path)? {
+            let child_path = self.path.join(&entry.name);
             if entry.is_dir {
-                children.push(FileNode::load(ws, &child_path)?);
+                children.push(FileNode {
+                    name: entry.name,
+                    path: child_path,
+                    is_dir: true,
+                    children: Vec::new(),
+                    loaded: false,
+                    expanded: false,
+                });
             } else {
                 children.push(FileNode {
                     name: entry.name,
                     path: child_path,
                     is_dir: false,
                     children: Vec::new(),
+                    loaded: true,
                     expanded: false,
                 });
             }
         }
-        Ok(FileNode {
-            name: path
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.to_string_lossy().into_owned()),
-            path: path.to_path_buf(),
-            is_dir: true,
-            children,
-            expanded: true,
-        })
+        self.children = children;
+        self.loaded = true;
+        Ok(())
     }
 
-    fn gather(&self, out: &mut Vec<VisibleItem>, filter: &str) {
+    fn gather(
+        &mut self,
+        ws: &WorkspaceManager,
+        out: &mut Vec<VisibleItem>,
+        filter: &str,
+    ) -> Result<()> {
+        if self.expanded {
+            self.load_children(ws)?;
+        }
         if self.name.is_empty() || self.name.to_lowercase().contains(&filter.to_lowercase()) {
             out.push(VisibleItem {
                 name: self.name.clone(),
@@ -61,10 +87,11 @@ impl FileNode {
             });
         }
         if self.expanded {
-            for c in &self.children {
-                c.gather(out, filter);
+            for c in &mut self.children {
+                c.gather(ws, out, filter)?;
             }
         }
+        Ok(())
     }
 }
 
@@ -81,7 +108,7 @@ pub struct FilePicker {
 #[allow(dead_code)]
 impl FilePicker {
     pub fn new(ws: WorkspaceManager) -> Result<Self> {
-        let root = FileNode::load(&ws, ws.root())?;
+        let root = FileNode::load_root(&ws)?;
         let mut picker = Self {
             ws,
             root,
@@ -89,24 +116,25 @@ impl FilePicker {
             selected: 0,
             visible: Vec::new(),
         };
-        picker.update_visible();
+        picker.update_visible()?;
         Ok(picker)
     }
 
-    fn update_visible(&mut self) {
+    fn update_visible(&mut self) -> Result<()> {
         let mut items = Vec::new();
-        for c in &self.root.children {
-            c.gather(&mut items, &self.search);
+        for c in &mut self.root.children {
+            c.gather(&self.ws, &mut items, &self.search)?;
         }
         self.visible = items;
         if self.selected >= self.visible.len() {
             self.selected = self.visible.len().saturating_sub(1);
         }
+        Ok(())
     }
 
     pub fn set_search(&mut self, s: &str) {
         self.search = s.to_string();
-        self.update_visible();
+        self.update_visible().ok();
     }
 
     pub fn preview(&self) -> Result<String> {
@@ -151,7 +179,7 @@ impl FilePicker {
             if let Some(node) = Self::find_mut(&mut self.root, &item.path) {
                 if node.is_dir {
                     node.expanded = !node.expanded;
-                    self.update_visible();
+                    self.update_visible().ok();
                 }
             }
         }
@@ -170,8 +198,12 @@ impl FilePicker {
             })
             .unwrap_or_else(|| self.ws.root().to_path_buf());
         self.ws.create_file(&dir.join(name))?;
-        self.root = FileNode::load(&self.ws, self.ws.root())?;
-        self.update_visible();
+        self.ws.clear_cache();
+        self.root = FileNode::load_root(&self.ws)?;
+        if let Some(node) = Self::find_mut(&mut self.root, &dir) {
+            node.expanded = true;
+        }
+        self.update_visible()?;
         Ok(())
     }
 
@@ -188,8 +220,12 @@ impl FilePicker {
             })
             .unwrap_or_else(|| self.ws.root().to_path_buf());
         self.ws.create_dir(&dir.join(name))?;
-        self.root = FileNode::load(&self.ws, self.ws.root())?;
-        self.update_visible();
+        self.ws.clear_cache();
+        self.root = FileNode::load_root(&self.ws)?;
+        if let Some(node) = Self::find_mut(&mut self.root, &dir) {
+            node.expanded = true;
+        }
+        self.update_visible()?;
         Ok(())
     }
 
@@ -197,17 +233,27 @@ impl FilePicker {
         if let Some(item) = self.visible.get(self.selected) {
             let new_path = item.path.parent().unwrap().join(new_name);
             self.ws.rename(&item.path, &new_path)?;
-            self.root = FileNode::load(&self.ws, self.ws.root())?;
-            self.update_visible();
+            let parent = item.path.parent().unwrap().to_path_buf();
+            self.ws.clear_cache();
+            self.root = FileNode::load_root(&self.ws)?;
+            if let Some(node) = Self::find_mut(&mut self.root, &parent) {
+                node.expanded = true;
+            }
+            self.update_visible()?;
         }
         Ok(())
     }
 
     pub fn delete_selected(&mut self) -> Result<()> {
         if let Some(item) = self.visible.get(self.selected) {
+            let parent = item.path.parent().unwrap().to_path_buf();
             self.ws.delete(&item.path)?;
-            self.root = FileNode::load(&self.ws, self.ws.root())?;
-            self.update_visible();
+            self.ws.clear_cache();
+            self.root = FileNode::load_root(&self.ws)?;
+            if let Some(node) = Self::find_mut(&mut self.root, &parent) {
+                node.expanded = true;
+            }
+            self.update_visible()?;
         }
         Ok(())
     }
@@ -321,5 +367,16 @@ mod tests {
             .unwrap();
         picker.delete_selected().unwrap();
         assert!(std::fs::metadata(dir.path().join("sub/renamed.txt")).is_err());
+    }
+
+    #[test]
+    fn test_large_directory_handling() {
+        let dir = tempdir().unwrap();
+        for i in 0..1000 {
+            std::fs::write(dir.path().join(format!("f{i}.txt")), "").unwrap();
+        }
+        let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        let picker = FilePicker::new(ws).unwrap();
+        assert_eq!(picker.visible.len(), 1000);
     }
 }

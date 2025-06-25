@@ -1,3 +1,4 @@
+use std::cell::{Ref, RefCell};
 use std::fmt;
 use std::ops::Range;
 
@@ -6,6 +7,7 @@ use std::ops::Range;
 #[allow(dead_code)]
 pub struct Rope {
     chunks: Vec<Chunk>,
+    cache: RefCell<Option<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +35,10 @@ impl Chunk {
 impl Rope {
     /// Create an empty rope.
     pub fn new() -> Self {
-        Self { chunks: Vec::new() }
+        Self {
+            chunks: Vec::new(),
+            cache: RefCell::new(None),
+        }
     }
 
     /// Create a rope from a UTF-8 string.
@@ -71,6 +76,7 @@ impl Rope {
 
     /// Push string data onto the end of the rope, splitting into chunks.
     fn push_str(&mut self, mut s: &str) {
+        self.cache.borrow_mut().take();
         if let Some(last) = self.chunks.last_mut() {
             let space = CHUNK_SIZE.saturating_sub(last.data.len());
             if space > 0 {
@@ -108,6 +114,37 @@ impl Rope {
             .unwrap_or(s.len())
     }
 
+    pub fn cached_text(&self) -> Ref<'_, str> {
+        if self.cache.borrow().is_none() {
+            let mut s = String::new();
+            for c in &self.chunks {
+                s.push_str(&c.data);
+            }
+            *self.cache.borrow_mut() = Some(s);
+        }
+        Ref::map(self.cache.borrow(), |c| c.as_deref().unwrap())
+    }
+
+    /// Return a range of lines as owned strings.
+    pub fn lines_range(&self, start: usize, count: usize) -> Vec<String> {
+        let text = self.cached_text();
+        text.lines()
+            .skip(start)
+            .take(count)
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    /// Append text to the end of the rope.
+    pub fn append(&mut self, text: &str) {
+        self.push_str(text);
+    }
+
+    /// Number of chunks currently used.
+    pub fn chunk_count(&self) -> usize {
+        self.chunks.len()
+    }
+
     fn find_chunk(&self, mut index: usize) -> (usize, usize) {
         for (i, chunk) in self.chunks.iter().enumerate() {
             if index <= chunk.char_len {
@@ -126,6 +163,7 @@ impl Rope {
 
     /// Insert text at the given character index.
     pub fn insert(&mut self, index: usize, text: &str) {
+        self.cache.borrow_mut().take();
         if self.chunks.is_empty() {
             self.push_str(text);
             return;
@@ -140,6 +178,7 @@ impl Rope {
 
     /// Delete the text within the given character range.
     pub fn delete(&mut self, range: Range<usize>) {
+        self.cache.borrow_mut().take();
         if range.start >= range.end {
             return;
         }
@@ -182,6 +221,7 @@ impl Rope {
     }
 
     fn rebalance(&mut self, mut idx: usize) {
+        self.cache.borrow_mut().take();
         while idx < self.chunks.len() && self.chunks[idx].data.len() > CHUNK_SIZE {
             let split_at = Self::split_index(&self.chunks[idx].data, CHUNK_SIZE);
             let extra = self.chunks[idx].data.split_off(split_at);
@@ -323,5 +363,32 @@ mod tests {
     fn test_line_at_out_of_bounds() {
         let r = Rope::from_str("a\nb");
         assert_eq!(r.line_at(5), None);
+    }
+
+    #[test]
+    fn test_lines_range_virtual_scrolling() {
+        let text = "a\n".repeat(1_000_000);
+        let r = Rope::from_str(&text);
+        let lines = r.lines_range(999_990, 5);
+        assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn test_rope_operation_performance() {
+        use std::time::Instant;
+        let mut r = Rope::new();
+        let start = Instant::now();
+        for _ in 0..1000 {
+            r.append("a");
+        }
+        let dur = start.elapsed();
+        assert!(dur.as_millis() < 200);
+    }
+
+    #[test]
+    fn test_memory_usage_scaling() {
+        let text = "a".repeat(CHUNK_SIZE * 3);
+        let r = Rope::from_str(&text);
+        assert!(r.chunk_count() <= 4);
     }
 }

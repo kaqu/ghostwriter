@@ -1,5 +1,6 @@
 // files module
 
+pub mod diff;
 pub mod file_history;
 pub mod file_lock;
 pub mod file_manager;

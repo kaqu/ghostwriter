@@ -27,70 +27,54 @@ impl<'a> ratatui::widgets::StatefulWidget for EditorWidget<'a> {
         buf: &mut ratatui::buffer::Buffer,
         state: &mut Self::State,
     ) {
-        let total_lines = self.rope.as_string().lines().count();
+        let total_lines = self.rope.cached_text().lines().count();
         let line_number_width = total_lines.to_string().len() as u16 + 1;
-        for y in 0..area.height {
-            let line_idx = state.scroll_y as usize + y as usize;
-            if let Some(line) = self.rope.line_at(line_idx) {
-                let ln = format!(
-                    "{:>width$} ",
-                    line_idx + 1,
-                    width = line_number_width as usize - 1
-                );
-                let y_pos = area.y + y;
-                buf.set_string(area.x, y_pos, ln, ratatui::style::Style::default());
-                let visible: String = line
-                    .chars()
-                    .skip(state.scroll_x as usize)
-                    .take((area.width - line_number_width) as usize)
-                    .collect();
-                buf.set_string(
-                    area.x + line_number_width,
-                    y_pos,
-                    visible.clone(),
-                    ratatui::style::Style::default(),
-                );
+        let lines = self
+            .rope
+            .lines_range(state.scroll_y as usize, area.height as usize);
+        for (y, line) in lines.iter().enumerate() {
+            let line_idx = state.scroll_y as usize + y;
+            let ln = format!(
+                "{:>width$} ",
+                line_idx + 1,
+                width = line_number_width as usize - 1
+            );
+            let y_pos = area.y + y as u16;
+            buf.set_string(area.x, y_pos, ln, ratatui::style::Style::default());
+            let visible: String = line
+                .chars()
+                .skip(state.scroll_x as usize)
+                .take((area.width - line_number_width) as usize)
+                .collect();
+            buf.set_string(
+                area.x + line_number_width,
+                y_pos,
+                visible.clone(),
+                ratatui::style::Style::default(),
+            );
 
-                if let Some(sel) = &state.selection {
-                    let mut sel = sel.clone();
-                    sel.normalize();
-                    if line_idx >= sel.start.line && line_idx <= sel.end.line {
-                        let start_col = if line_idx == sel.start.line {
-                            sel.start.column
-                        } else {
-                            0
-                        };
-                        let end_col = if line_idx == sel.end.line {
-                            sel.end.column
-                        } else {
-                            line.chars().count()
-                        };
-                        for col in start_col..end_col {
-                            if col < state.scroll_x as usize {
-                                continue;
-                            }
-                            if col
-                                >= state.scroll_x as usize
-                                    + (area.width - line_number_width) as usize
-                            {
-                                break;
-                            }
-                            let x = area.x + line_number_width + (col as u16 - state.scroll_x);
-                            if let Some(c) = buf.cell_mut((x, y_pos)) {
-                                c.set_style(
-                                    ratatui::style::Style::default()
-                                        .add_modifier(ratatui::style::Modifier::REVERSED),
-                                );
-                            }
+            if let Some(mut sel) = state.selection.clone() {
+                sel.normalize();
+                if line_idx >= sel.start.line && line_idx <= sel.end.line {
+                    let start_col = if line_idx == sel.start.line {
+                        sel.start.column
+                    } else {
+                        0
+                    };
+                    let end_col = if line_idx == sel.end.line {
+                        sel.end.column
+                    } else {
+                        line.chars().count()
+                    };
+                    for col in start_col..end_col {
+                        if col < state.scroll_x as usize {
+                            continue;
                         }
-                    }
-                }
-
-                if state.cursor.line == line_idx {
-                    let col = state.cursor.column;
-                    if col >= state.scroll_x as usize
-                        && col < state.scroll_x as usize + (area.width - line_number_width) as usize
-                    {
+                        if col
+                            >= state.scroll_x as usize + (area.width - line_number_width) as usize
+                        {
+                            break;
+                        }
                         let x = area.x + line_number_width + (col as u16 - state.scroll_x);
                         if let Some(c) = buf.cell_mut((x, y_pos)) {
                             c.set_style(
@@ -98,6 +82,21 @@ impl<'a> ratatui::widgets::StatefulWidget for EditorWidget<'a> {
                                     .add_modifier(ratatui::style::Modifier::REVERSED),
                             );
                         }
+                    }
+                }
+            }
+
+            if state.cursor.line == line_idx {
+                let col = state.cursor.column;
+                if col >= state.scroll_x as usize
+                    && col < state.scroll_x as usize + (area.width - line_number_width) as usize
+                {
+                    let x = area.x + line_number_width + (col as u16 - state.scroll_x);
+                    if let Some(c) = buf.cell_mut((x, y_pos)) {
+                        c.set_style(
+                            ratatui::style::Style::default()
+                                .add_modifier(ratatui::style::Modifier::REVERSED),
+                        );
                     }
                 }
             }

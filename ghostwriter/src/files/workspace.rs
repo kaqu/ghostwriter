@@ -1,6 +1,8 @@
 // WorkspaceManager enforces sandboxed directory operations
 #![allow(dead_code)]
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
@@ -20,6 +22,7 @@ pub struct DirEntryInfo {
 #[derive(Debug, Clone)]
 pub struct WorkspaceManager {
     root: PathBuf,
+    cache: RefCell<HashMap<PathBuf, Vec<DirEntryInfo>>>,
 }
 
 impl WorkspaceManager {
@@ -31,12 +34,25 @@ impl WorkspaceManager {
                 "workspace root must be a directory".into(),
             ));
         }
-        Ok(Self { root: canonical })
+        Ok(Self {
+            root: canonical,
+            cache: RefCell::new(HashMap::new()),
+        })
     }
 
     /// Return the workspace root directory path.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Number of cached directory entries (for testing).
+    pub fn cache_size(&self) -> usize {
+        self.cache.borrow().len()
+    }
+
+    /// Clear cached metadata.
+    pub fn clear_cache(&self) {
+        self.cache.borrow_mut().clear();
     }
 
     /// Resolve an existing path within the workspace.
@@ -77,6 +93,9 @@ impl WorkspaceManager {
     /// List directory contents with basic metadata
     pub fn list_dir(&self, path: &Path) -> Result<Vec<DirEntryInfo>> {
         let dir = self.resolve_existing(path)?;
+        if let Some(cached) = self.cache.borrow().get(&dir) {
+            return Ok(cached.clone());
+        }
         let mut entries = Vec::new();
         for entry in fs::read_dir(&dir)? {
             let entry = entry?;
@@ -87,6 +106,7 @@ impl WorkspaceManager {
                 size: meta.len(),
             });
         }
+        self.cache.borrow_mut().insert(dir, entries.clone());
         Ok(entries)
     }
 
@@ -186,6 +206,18 @@ mod tests {
         ws.delete(Path::new("subdir/renamed.txt")).unwrap();
         ws.delete(Path::new("subdir")).unwrap();
         assert!(ws.list_dir(Path::new("subdir")).is_err());
+    }
+
+    #[test]
+    fn test_directory_caching() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("file.txt"), "").unwrap();
+        let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        assert_eq!(ws.cache_size(), 0);
+        let _ = ws.list_dir(Path::new("."));
+        assert_eq!(ws.cache_size(), 1);
+        ws.clear_cache();
+        assert_eq!(ws.cache_size(), 0);
     }
 
     #[test]
