@@ -71,6 +71,7 @@ impl FileNode {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct FilePicker {
+    ws: WorkspaceManager,
     root: FileNode,
     pub search: String,
     pub selected: usize,
@@ -79,9 +80,10 @@ pub struct FilePicker {
 
 #[allow(dead_code)]
 impl FilePicker {
-    pub fn new(ws: &WorkspaceManager) -> Result<Self> {
-        let root = FileNode::load(ws, ws.root())?;
+    pub fn new(ws: WorkspaceManager) -> Result<Self> {
+        let root = FileNode::load(&ws, ws.root())?;
         let mut picker = Self {
+            ws,
             root,
             search: String::new(),
             selected: 0,
@@ -131,6 +133,84 @@ impl FilePicker {
             self.selected += 1;
         }
     }
+
+    fn find_mut<'a>(node: &'a mut FileNode, path: &Path) -> Option<&'a mut FileNode> {
+        if node.path == path {
+            return Some(node);
+        }
+        for child in &mut node.children {
+            if let Some(f) = Self::find_mut(child, path) {
+                return Some(f);
+            }
+        }
+        None
+    }
+
+    pub fn toggle_expand(&mut self) {
+        if let Some(item) = self.visible.get(self.selected) {
+            if let Some(node) = Self::find_mut(&mut self.root, &item.path) {
+                if node.is_dir {
+                    node.expanded = !node.expanded;
+                    self.update_visible();
+                }
+            }
+        }
+    }
+
+    pub fn create_file(&mut self, name: &str) -> Result<()> {
+        let dir = self
+            .visible
+            .get(self.selected)
+            .map(|n| {
+                if n.is_dir {
+                    n.path.clone()
+                } else {
+                    n.path.parent().unwrap().to_path_buf()
+                }
+            })
+            .unwrap_or_else(|| self.ws.root().to_path_buf());
+        self.ws.create_file(&dir.join(name))?;
+        self.root = FileNode::load(&self.ws, self.ws.root())?;
+        self.update_visible();
+        Ok(())
+    }
+
+    pub fn create_dir(&mut self, name: &str) -> Result<()> {
+        let dir = self
+            .visible
+            .get(self.selected)
+            .map(|n| {
+                if n.is_dir {
+                    n.path.clone()
+                } else {
+                    n.path.parent().unwrap().to_path_buf()
+                }
+            })
+            .unwrap_or_else(|| self.ws.root().to_path_buf());
+        self.ws.create_dir(&dir.join(name))?;
+        self.root = FileNode::load(&self.ws, self.ws.root())?;
+        self.update_visible();
+        Ok(())
+    }
+
+    pub fn rename_selected(&mut self, new_name: &str) -> Result<()> {
+        if let Some(item) = self.visible.get(self.selected) {
+            let new_path = item.path.parent().unwrap().join(new_name);
+            self.ws.rename(&item.path, &new_path)?;
+            self.root = FileNode::load(&self.ws, self.ws.root())?;
+            self.update_visible();
+        }
+        Ok(())
+    }
+
+    pub fn delete_selected(&mut self) -> Result<()> {
+        if let Some(item) = self.visible.get(self.selected) {
+            self.ws.delete(&item.path)?;
+            self.root = FileNode::load(&self.ws, self.ws.root())?;
+            self.update_visible();
+        }
+        Ok(())
+    }
 }
 
 impl Widget for FilePicker {
@@ -166,7 +246,7 @@ mod tests {
     fn test_file_picker_overlay() {
         let dir = tempdir().unwrap();
         let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-        let picker = FilePicker::new(&ws).unwrap();
+        let picker = FilePicker::new(ws).unwrap();
         let backend = TestBackend::new(20, 10);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
@@ -186,7 +266,7 @@ mod tests {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("main.rs"), "fn main(){}\n").unwrap();
         let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-        let mut picker = FilePicker::new(&ws).unwrap();
+        let mut picker = FilePicker::new(ws).unwrap();
         picker.set_search("main");
         assert!(picker.visible.iter().any(|n| n.name == "main.rs"));
     }
@@ -196,7 +276,7 @@ mod tests {
         let dir = tempdir().unwrap();
         std::fs::write(dir.path().join("file.txt"), "line1\nline2\nline3\n").unwrap();
         let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-        let mut picker = FilePicker::new(&ws).unwrap();
+        let mut picker = FilePicker::new(ws).unwrap();
         picker.set_search("file");
         let preview = picker.preview().unwrap();
         assert!(preview.contains("line1"));
@@ -208,11 +288,38 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), "").unwrap();
         std::fs::write(dir.path().join("b.txt"), "").unwrap();
         let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-        let mut picker = FilePicker::new(&ws).unwrap();
+        let mut picker = FilePicker::new(ws).unwrap();
         let initial = picker.selected;
         picker.move_down();
         assert_eq!(picker.selected, initial + 1);
         picker.move_up();
         assert_eq!(picker.selected, initial);
+    }
+
+    #[test]
+    fn test_expand_and_file_operations() {
+        let dir = tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/file.txt"), "").unwrap();
+        let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        let mut picker = FilePicker::new(ws).unwrap();
+        picker.toggle_expand();
+        assert!(picker.visible.len() > 0);
+        picker.create_file("new.txt").unwrap();
+        assert!(std::fs::metadata(dir.path().join("sub/new.txt")).is_ok());
+        picker.selected = picker
+            .visible
+            .iter()
+            .position(|n| n.name == "new.txt")
+            .unwrap();
+        picker.rename_selected("renamed.txt").unwrap();
+        assert!(std::fs::metadata(dir.path().join("sub/renamed.txt")).is_ok());
+        picker.selected = picker
+            .visible
+            .iter()
+            .position(|n| n.name == "renamed.txt")
+            .unwrap();
+        picker.delete_selected().unwrap();
+        assert!(std::fs::metadata(dir.path().join("sub/renamed.txt")).is_err());
     }
 }
