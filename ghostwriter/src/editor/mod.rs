@@ -1,5 +1,6 @@
 // editor module
 pub mod cursor;
+pub mod key_handler;
 pub mod rope;
 pub mod selection;
 pub mod undo;
