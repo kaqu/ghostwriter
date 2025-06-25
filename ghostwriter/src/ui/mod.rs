@@ -1,16 +1,14 @@
 pub mod editor_widget;
+pub mod file_picker;
 pub mod status_bar;
 pub mod terminal;
 
 #[allow(unused_imports)]
+pub use file_picker::FilePicker;
+#[allow(unused_imports)]
 pub use status_bar::{ConnectionStatus, LockStatus, Mode, StatusBar};
 #[allow(unused_imports)]
 pub use terminal::TerminalUI;
-
-// Retain placeholder until further UI features are implemented
-pub fn hello_ui() {
-    println!("Hello from ui module!");
-}
 
 #[cfg(test)]
 mod tests {
