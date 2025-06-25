@@ -4,6 +4,7 @@ mod editor;
 mod error;
 mod files;
 mod network;
+mod state;
 mod ui;
 
 use clap::Parser;

@@ -8,6 +8,7 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message as WsMessage,
 };
+use url::Url;
 use uuid::Uuid;
 
 use crate::error::{GhostwriterError, Result};
@@ -30,15 +31,27 @@ pub struct GhostwriterClient {
 }
 
 impl GhostwriterClient {
-    pub fn new(url: String, key: Option<String>) -> Self {
-        Self {
+    fn validate_url(url: &str) -> Result<()> {
+        let parsed =
+            Url::parse(url).map_err(|e| GhostwriterError::InvalidArgument(e.to_string()))?;
+        match parsed.scheme() {
+            "ws" | "wss" => Ok(()),
+            _ => Err(GhostwriterError::InvalidArgument(
+                "invalid url scheme".into(),
+            )),
+        }
+    }
+
+    pub fn new(url: String, key: Option<String>) -> Result<Self> {
+        Self::validate_url(&url)?;
+        Ok(Self {
             url,
             key,
             ws: None,
             backoff: 100,
             queue: Vec::new(),
             status: ConnectionStatus::Disconnected,
-        }
+        })
     }
 
     pub fn status(&self) -> ConnectionStatus {
@@ -95,6 +108,11 @@ impl GhostwriterClient {
                 }
             }
         }
+    }
+
+    /// Attempt to recover from a disconnected state by reconnecting.
+    pub async fn recover(&mut self) -> Result<()> {
+        self.ensure_connection().await
     }
 
     async fn flush_queue(&mut self) -> Result<()> {
@@ -170,7 +188,7 @@ mod tests {
         let addr = server.local_addr().unwrap();
         let handle = tokio::spawn(server.run());
 
-        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None);
+        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
         client.connect().await.unwrap();
         assert_eq!(client.status(), ConnectionStatus::Connected);
         let resp = client
@@ -197,7 +215,7 @@ mod tests {
         let addr = server.local_addr().unwrap();
         let handle = tokio::spawn(server.run());
 
-        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None);
+        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
         client.connect().await.unwrap();
         let _ = client
             .request(MessageKind::Ping, Duration::from_secs(1))
@@ -244,7 +262,7 @@ mod tests {
         let addr = server.local_addr().unwrap();
         let handle = tokio::spawn(server.run());
 
-        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None);
+        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
         client.connect().await.unwrap();
 
         handle.abort();
@@ -300,7 +318,7 @@ mod tests {
         let addr = server.local_addr().unwrap();
         let handle = tokio::spawn(server.run());
 
-        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None);
+        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
         client.connect().await.unwrap();
 
         handle.abort();
@@ -312,6 +330,57 @@ mod tests {
         let res = client
             .request(MessageKind::Ping, Duration::from_millis(50))
             .await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_network_failure_recovery() {
+        let dir = tempdir().unwrap();
+        let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        let server = GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws, None)
+            .await
+            .unwrap();
+        let addr = server.local_addr().unwrap();
+        let handle = tokio::spawn(server.run());
+
+        let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+        client.connect().await.unwrap();
+
+        handle.abort();
+        let _ = handle.await;
+        if let Some(mut ws) = client.ws.take() {
+            let _ = ws.close(None).await;
+        }
+
+        // request should fail and queue
+        assert!(
+            client
+                .request(MessageKind::Ping, Duration::from_millis(100))
+                .await
+                .is_err()
+        );
+
+        let ws2 = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        let server2 = GhostwriterServer::bind(addr, ws2, None).await.unwrap();
+        let handle2 = tokio::spawn(server2.run());
+
+        client.recover().await.unwrap();
+        assert_eq!(client.status(), ConnectionStatus::Connected);
+
+        let resp = client
+            .request(MessageKind::Ping, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert!(matches!(resp.kind, MessageKind::Pong));
+
+        handle2.abort();
+        let _ = handle2.await;
+    }
+
+    #[test]
+    fn test_input_validation() {
+        let res = GhostwriterClient::new("http://invalid".into(), None);
         assert!(res.is_err());
     }
 }

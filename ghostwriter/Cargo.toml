@@ -24,6 +24,7 @@ rand = "0.8"
 regex = "1.10.3"
 twoway = "0.2"
 walkdir = "2.5.0"
+url = "2.5.0"
 
 [dev-dependencies]
 serial_test = "3.2.0"
