@@ -1,6 +1,9 @@
 pub mod editor_widget;
+pub mod status_bar;
 pub mod terminal;
 
+#[allow(unused_imports)]
+pub use status_bar::{ConnectionStatus, LockStatus, Mode, StatusBar};
 #[allow(unused_imports)]
 pub use terminal::TerminalUI;
 
