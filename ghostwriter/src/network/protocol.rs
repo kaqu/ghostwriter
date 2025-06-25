@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::files::search::SearchResult;
 use crate::files::workspace::DirEntryInfo;
 use uuid::Uuid;
 
@@ -66,6 +67,17 @@ pub enum MessageKind {
     LockResponse {
         success: bool,
         readonly: bool,
+        reason: Option<String>,
+    },
+    /// Search for content across workspace files.
+    SearchRequest {
+        pattern: String,
+        regex: bool,
+        case_sensitive: bool,
+    },
+    /// Response to content search request.
+    SearchResponse {
+        matches: Option<Vec<SearchResult>>,
         reason: Option<String>,
     },
 }

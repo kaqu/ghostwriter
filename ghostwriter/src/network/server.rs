@@ -339,6 +339,33 @@ async fn handle_client(
                     }
                     ws_stream.send(WsMessage::Text(resp_json.into())).await?;
                 }
+                MessageKind::SearchRequest {
+                    pattern,
+                    regex,
+                    case_sensitive,
+                } => {
+                    let resp = match ws.search(&pattern, regex, case_sensitive, 1000) {
+                        Ok(matches) => Message {
+                            id: req.id,
+                            kind: MessageKind::SearchResponse {
+                                matches: Some(matches),
+                                reason: None,
+                            },
+                        },
+                        Err(e) => Message {
+                            id: req.id,
+                            kind: MessageKind::SearchResponse {
+                                matches: None,
+                                reason: Some(e.to_string()),
+                            },
+                        },
+                    };
+                    ws_stream
+                        .send(WsMessage::Text(
+                            serde_json::to_string(&resp).unwrap().into(),
+                        ))
+                        .await?;
+                }
                 _ => {}
             }
         } else if msg.is_close() {
