@@ -21,6 +21,7 @@ tempfile = "3.10.1"
 fs4 = "0.13.1"
 futures-util = "0.3"
 rand = "0.8"
+regex = "1.10.3"
 
 [dev-dependencies]
 serial_test = "3.2.0"
