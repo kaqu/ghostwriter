@@ -8,6 +8,35 @@ mod ui;
 
 use clap::Parser;
 use log::error;
+use std::net::SocketAddr;
+#[cfg(test)]
+use std::path::PathBuf;
+
+use crate::error::{GhostwriterError, Result};
+
+fn parse_addr(bind: &str, port: u16) -> Result<SocketAddr> {
+    let addr = format!("{bind}:{port}");
+    addr.parse::<SocketAddr>()
+        .map_err(|e| GhostwriterError::InvalidArgument(e.to_string()))
+}
+
+async fn create_server(args: &cli::Args) -> Result<network::server::GhostwriterServer> {
+    let dir = args
+        .server
+        .clone()
+        .ok_or_else(|| GhostwriterError::InvalidArgument("missing server path".into()))?;
+    let ws = files::workspace::WorkspaceManager::new(dir)?;
+    let addr = parse_addr(&args.bind, args.port)?;
+    network::server::GhostwriterServer::bind(addr, ws, args.key.clone()).await
+}
+
+fn run_server(args: &cli::Args) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let server = create_server(args).await?;
+        server.run().await
+    })
+}
 
 fn main() {
     env_logger::init();
@@ -17,11 +46,19 @@ fn main() {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
-    println!("Parsed arguments: {args:?}");
-    // Placeholder module calls
-    app::hello_app();
-    editor::hello_editor();
-    network::hello_network();
+    if args.server.is_some() {
+        if let Err(e) = run_server(&args) {
+            error!("{e}");
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    } else {
+        println!("Parsed arguments: {args:?}");
+        // Placeholder module calls
+        app::hello_app();
+        editor::hello_editor();
+        network::hello_network();
+    }
 }
 
 #[cfg(test)]
@@ -100,5 +137,31 @@ mod tests {
         let _ = files::file_manager::FileManager::is_binary(b"test");
         network::hello_network();
         assert!(true, "Module functions callable");
+    }
+
+    #[test]
+    fn test_parse_addr_valid() {
+        let addr = parse_addr("127.0.0.1", 8080).unwrap();
+        assert_eq!(addr.port(), 8080);
+    }
+
+    #[test]
+    fn test_parse_addr_invalid() {
+        let res = parse_addr("invalid", 8080);
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_server_invalid_dir() {
+        let args = cli::Args {
+            path: None,
+            server: Some(PathBuf::from("/no/such")),
+            connect: None,
+            bind: "127.0.0.1".into(),
+            port: 0,
+            key: None,
+        };
+        let res = create_server(&args).await;
+        assert!(res.is_err());
     }
 }
