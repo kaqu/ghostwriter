@@ -17,6 +17,7 @@ pub struct UndoRecord {
     pub after: Cursor,
 }
 
+#[derive(Debug)]
 pub struct UndoStack {
     limit: usize,
     entries: Vec<UndoRecord>,
