@@ -25,6 +25,28 @@ pub enum FileContents {
 #[derive(Debug, Default)]
 pub struct FileManager;
 
+/// Iterator over file data in fixed-size chunks.
+pub struct ChunkReader {
+    file: File,
+    buf_size: usize,
+}
+
+impl Iterator for ChunkReader {
+    type Item = std::io::Result<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut buf = vec![0u8; self.buf_size];
+        match self.file.read(&mut buf) {
+            Ok(0) => None,
+            Ok(n) => {
+                buf.truncate(n);
+                Some(Ok(buf))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
 impl FileManager {
     /// Read file contents, using memory mapping for large files.
     pub fn read(path: &Path) -> Result<FileContents> {
@@ -53,6 +75,15 @@ impl FileManager {
         tmp.persist(path)
             .map_err(|e| GhostwriterError::Io(e.error))?;
         Ok(())
+    }
+
+    /// Read a file incrementally, returning an iterator over chunks.
+    pub fn chunk_reader(path: &Path, chunk_size: usize) -> Result<ChunkReader> {
+        let file = File::open(path)?;
+        Ok(ChunkReader {
+            file,
+            buf_size: chunk_size,
+        })
     }
 
     /// Determine if a slice of bytes likely represents binary data.
@@ -120,5 +151,20 @@ mod tests {
         let data = b"hello\xFFworld";
         let s = FileManager::to_utf8_or_hex(data);
         assert!(s.contains("FF"));
+    }
+
+    #[test]
+    fn test_chunk_reader() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("chunk.txt");
+        let data: Vec<u8> = (0..10u8).cycle().take(3000).collect();
+        std::fs::write(&path, &data).unwrap();
+        let mut reader = FileManager::chunk_reader(&path, 512).unwrap();
+        let mut out = Vec::new();
+        while let Some(chunk) = reader.next() {
+            let chunk = chunk.unwrap();
+            out.extend_from_slice(&chunk);
+        }
+        assert_eq!(out, data);
     }
 }

@@ -21,7 +21,6 @@ fn main() {
     // Placeholder module calls
     app::hello_app();
     editor::hello_editor();
-    files::hello_files();
     network::hello_network();
     ui::hello_ui();
 }
@@ -99,7 +98,7 @@ mod tests {
         // Check if placeholder functions from modules are callable
         app::hello_app();
         editor::hello_editor();
-        files::hello_files();
+        let _ = files::file_manager::FileManager::is_binary(b"test");
         network::hello_network();
         ui::hello_ui();
         assert!(true, "Module functions callable");
