@@ -307,4 +307,81 @@ mod tests {
         );
         assert!(sel.is_none());
     }
+
+    #[test]
+    fn test_tab_inserts_spaces() {
+        let mut rope = Rope::new();
+        let mut cursor = Cursor::new();
+        let mut handler = KeyHandler::new();
+        let mut sel = None;
+        handler.handle(
+            key(KeyCode::Tab, KeyModifiers::empty()),
+            &mut rope,
+            &mut cursor,
+            &mut sel,
+        );
+        assert_eq!(rope.as_string(), "    ");
+        assert_eq!(cursor.position(), (0, 4));
+    }
+
+    #[test]
+    fn test_page_navigation() {
+        let mut text = String::new();
+        for _ in 0..30 {
+            text.push_str("line\n");
+        }
+        let mut rope = Rope::from_str(&text);
+        let mut cursor = Cursor::new();
+        let mut handler = KeyHandler::new();
+        let mut sel = None;
+        handler.handle(
+            key(KeyCode::PageDown, KeyModifiers::empty()),
+            &mut rope,
+            &mut cursor,
+            &mut sel,
+        );
+        assert_eq!(cursor.line, 10);
+        handler.handle(
+            key(KeyCode::PageUp, KeyModifiers::empty()),
+            &mut rope,
+            &mut cursor,
+            &mut sel,
+        );
+        assert_eq!(cursor.line, 0);
+    }
+
+    #[test]
+    fn test_shift_selection_across_lines() {
+        let mut rope = Rope::from_str("a\nb\n");
+        let mut cursor = Cursor::new();
+        let mut handler = KeyHandler::new();
+        let mut sel = None;
+        handler.handle(
+            key(KeyCode::Down, KeyModifiers::SHIFT),
+            &mut rope,
+            &mut cursor,
+            &mut sel,
+        );
+        assert!(sel.is_some());
+        let sel = sel.unwrap();
+        assert_eq!(sel.start.position(), (0, 0));
+        assert_eq!(sel.end.position(), (1, 0));
+    }
+
+    #[test]
+    fn test_input_mode_respected() {
+        let mut rope = Rope::from_str("hi");
+        let mut cursor = Cursor::new();
+        let mut handler = KeyHandler::new();
+        handler.set_mode(InputMode::Picker);
+        let mut sel = None;
+        handler.handle(
+            key(KeyCode::Char('x'), KeyModifiers::empty()),
+            &mut rope,
+            &mut cursor,
+            &mut sel,
+        );
+        assert_eq!(rope.as_string(), "hi");
+        assert_eq!(cursor.position(), (0, 0));
+    }
 }
