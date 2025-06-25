@@ -57,7 +57,6 @@ fn main() {
         // Placeholder module calls
         app::hello_app();
         editor::hello_editor();
-        network::hello_network();
     }
 }
 
@@ -135,7 +134,11 @@ mod tests {
         app::hello_app();
         editor::hello_editor();
         let _ = files::file_manager::FileManager::is_binary(b"test");
-        network::hello_network();
+        let msg = network::protocol::Message {
+            id: uuid::Uuid::nil(),
+            kind: network::protocol::MessageKind::Ping,
+        };
+        let _ = serde_json::to_string(&msg).unwrap();
         assert!(true, "Module functions callable");
     }
 
