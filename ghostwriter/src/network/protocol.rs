@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+
+use crate::files::workspace::DirEntryInfo;
 use uuid::Uuid;
 
 /// Represents a protocol message exchanged over WebSockets.
@@ -36,6 +38,36 @@ pub enum MessageKind {
     Pong,
     /// Error message with human readable context.
     Error { context: String },
+    /// Request to read a file within the workspace.
+    FileReadRequest { path: String },
+    /// Response containing file data if successful.
+    FileReadResponse {
+        success: bool,
+        data: Option<Vec<u8>>,
+        reason: Option<String>,
+    },
+    /// Request to write data to a file.
+    FileWriteRequest { path: String, data: Vec<u8> },
+    /// Response to a file write request.
+    FileWriteResponse {
+        success: bool,
+        reason: Option<String>,
+    },
+    /// Request directory listing.
+    DirListRequest { path: String },
+    /// Response with directory entries.
+    DirListResponse {
+        entries: Option<Vec<DirEntryInfo>>,
+        reason: Option<String>,
+    },
+    /// Request to lock a file.
+    LockRequest { path: String },
+    /// Response to lock request.
+    LockResponse {
+        success: bool,
+        readonly: bool,
+        reason: Option<String>,
+    },
 }
 
 #[cfg(test)]
