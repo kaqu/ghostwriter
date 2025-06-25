@@ -1,3 +1,4 @@
+pub mod editor_widget;
 pub mod terminal;
 
 #[allow(unused_imports)]
