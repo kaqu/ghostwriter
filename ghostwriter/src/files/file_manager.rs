@@ -167,4 +167,12 @@ mod tests {
         }
         assert_eq!(out, data);
     }
+
+    #[test]
+    fn test_file_system_error_handling() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nope").join("file.txt");
+        let res = FileManager::atomic_write(&path, b"data");
+        assert!(res.is_err());
+    }
 }
