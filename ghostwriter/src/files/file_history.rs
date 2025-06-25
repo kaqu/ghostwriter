@@ -152,4 +152,21 @@ mod tests {
         }
         assert_eq!(hist.len(), 1000);
     }
+
+    #[test]
+    fn test_history_boundaries() {
+        let mut hist = FileHistory::new();
+        assert!(hist.back().is_none());
+        assert!(hist.forward().is_none());
+
+        hist.push(sample_state("a"));
+        assert!(hist.back().is_none());
+        assert!(hist.forward().is_none());
+
+        hist.push(sample_state("b"));
+        hist.back();
+        assert!(hist.back().is_none());
+        hist.forward();
+        assert!(hist.forward().is_none());
+    }
 }

@@ -131,4 +131,13 @@ mod tests {
         let res = ws.search("match", false, true, 5).unwrap();
         assert_eq!(res.len(), 5);
     }
+
+    #[test]
+    fn test_invalid_regex_error() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("e.txt"), "text").unwrap();
+        let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        let res = ws.search("(", true, true, 1000);
+        assert!(res.is_err(), "invalid regex should return error");
+    }
 }
