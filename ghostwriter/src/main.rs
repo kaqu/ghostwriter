@@ -146,7 +146,7 @@ mod tests {
     fn test_modules_callable() {
         // Basic sanity checks on module API accessibility
         let _app = app::App::open(std::env::temp_dir().join("tmp.txt"));
-        editor::hello_editor();
+        let _cursor = editor::cursor::Cursor::new();
         let _ = files::file_manager::FileManager::is_binary(b"test");
         let msg = network::protocol::Message {
             id: uuid::Uuid::nil(),
