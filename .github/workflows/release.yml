@@ -1,0 +1,45 @@
+name: Build Release Artifacts
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build release
+        working-directory: ./ghostwriter
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Archive binary
+        run: |
+          tar -czf ghostwriter-${{ matrix.target }}.tar.gz -C ghostwriter/target/${{ matrix.target }}/release ghostwriter
+
+      - name: Upload artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ghostwriter-${{ matrix.target }}.tar.gz
