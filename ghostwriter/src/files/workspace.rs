@@ -57,6 +57,7 @@ impl WorkspaceManager {
 
     /// Resolve an existing path within the workspace.
     fn resolve_existing(&self, path: &Path) -> Result<PathBuf> {
+        crate::security::sanitize_path(path)?;
         let joined = if path.is_absolute() {
             PathBuf::from(path)
         } else {
@@ -73,6 +74,7 @@ impl WorkspaceManager {
 
     /// Resolve a new path for creation within the workspace.
     fn resolve_new(&self, path: &Path) -> Result<PathBuf> {
+        crate::security::sanitize_path(path)?;
         let joined = if path.is_absolute() {
             PathBuf::from(path)
         } else {

@@ -95,6 +95,7 @@ impl GhostwriterServer {
 }
 
 fn resolve_existing(ws: &WorkspaceManager, path: &Path) -> Result<PathBuf> {
+    crate::security::sanitize_path(path)?;
     let joined = if path.is_absolute() {
         PathBuf::from(path)
     } else {
@@ -110,6 +111,7 @@ fn resolve_existing(ws: &WorkspaceManager, path: &Path) -> Result<PathBuf> {
 }
 
 fn resolve_new(ws: &WorkspaceManager, path: &Path) -> Result<PathBuf> {
+    crate::security::sanitize_path(path)?;
     let joined = if path.is_absolute() {
         PathBuf::from(path)
     } else {
