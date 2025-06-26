@@ -8,7 +8,6 @@ use super::selection::Selection;
 
 /// Input mode indicating which component should receive events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)]
 pub enum InputMode {
     /// Standard text editing mode
     #[default]
@@ -19,7 +18,6 @@ pub enum InputMode {
 
 /// Handles key events and updates editor state accordingly.
 #[derive(Debug, Default)]
-#[allow(dead_code)]
 pub struct KeyHandler {
     mode: InputMode,
 }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // WebSocket server implementation
 
 use std::net::SocketAddr;
@@ -21,7 +22,6 @@ use crate::files::file_manager::{FileContents, FileManager};
 use crate::files::workspace::WorkspaceManager;
 use crate::network::protocol::{Message, MessageKind};
 
-#[allow(dead_code)]
 pub struct GhostwriterServer {
     listener: TcpListener,
     ws: WorkspaceManager,

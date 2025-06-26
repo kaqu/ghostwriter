@@ -4,8 +4,9 @@ use ghostwriter::cli::Args;
 use ghostwriter::editor::{cursor::Cursor, key_handler::KeyHandler, rope::Rope};
 use ghostwriter::files::file_manager::{FileContents, FileManager};
 use ghostwriter::files::workspace::WorkspaceManager;
+use ghostwriter::network::client::GhostwriterClient;
 use ghostwriter::network::protocol::MessageKind;
-use ghostwriter::network::{client::GhostwriterClient, server::GhostwriterServer};
+mod util;
 use serial_test::serial;
 use std::time::Duration;
 
@@ -40,21 +41,9 @@ fn test_complete_local_editing_session() {
 #[serial]
 async fn test_complete_remote_editing_session() {
     let dir = tempfile::tempdir().unwrap();
-    let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
     std::fs::write(dir.path().join("file.txt"), b"hello").unwrap();
 
-    let server = GhostwriterServer::bind(
-        "127.0.0.1:0".parse().unwrap(),
-        ws.clone(),
-        Some("secret".into()),
-    )
-    .await
-    .unwrap();
-    let addr = server.local_addr().unwrap();
-    let handle = tokio::spawn(server.run());
-
-    let mut client =
-        GhostwriterClient::new(format!("ws://{}", addr), Some("secret".into())).unwrap();
+    let (handle, mut client, _addr) = util::start_server(dir.path(), Some("secret".into())).await;
     client.connect().await.unwrap();
 
     let resp = client
@@ -108,14 +97,7 @@ async fn test_complete_remote_editing_session() {
 #[serial]
 async fn test_file_operations_integration() {
     let dir = tempfile::tempdir().unwrap();
-    let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-    let server = GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws.clone(), None)
-        .await
-        .unwrap();
-    let addr = server.local_addr().unwrap();
-    let handle = tokio::spawn(server.run());
-
-    let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+    let (handle, mut client, addr) = util::start_server(dir.path(), None).await;
     client.connect().await.unwrap();
     client
         .request(
@@ -130,18 +112,15 @@ async fn test_file_operations_integration() {
     handle.abort();
     let _ = handle.await;
 
-    ws.rename(
-        std::path::Path::new("file1.txt"),
-        std::path::Path::new("file2.txt"),
-    )
-    .unwrap();
-    let ws2 = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-    let server2 = GhostwriterServer::bind(addr, ws2.clone(), None)
-        .await
+    WorkspaceManager::new(dir.path().to_path_buf())
+        .unwrap()
+        .rename(
+            std::path::Path::new("file1.txt"),
+            std::path::Path::new("file2.txt"),
+        )
         .unwrap();
-    let handle2 = tokio::spawn(server2.run());
-
-    let mut client2 = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+    let ws2 = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+    let (handle2, mut client2) = util::start_server_with_addr(dir.path(), addr, None).await;
     client2.connect().await.unwrap();
     let resp = client2
         .request(
@@ -163,13 +142,7 @@ async fn test_file_operations_integration() {
     let _ = handle2.await;
 
     ws2.delete(std::path::Path::new("file2.txt")).unwrap();
-    let ws3 = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-    let server3 = GhostwriterServer::bind(addr, ws3.clone(), None)
-        .await
-        .unwrap();
-    let handle3 = tokio::spawn(server3.run());
-
-    let mut client3 = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+    let (handle3, mut client3) = util::start_server_with_addr(dir.path(), addr, None).await;
     client3.connect().await.unwrap();
     let resp = client3
         .request(
@@ -193,13 +166,7 @@ async fn test_file_operations_integration() {
 #[serial]
 async fn test_authentication_integration() {
     let dir = tempfile::tempdir().unwrap();
-    let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-    let server = GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws, Some("pass".into()))
-        .await
-        .unwrap();
-    let addr = server.local_addr().unwrap();
-    let handle = tokio::spawn(server.run());
-
+    let (handle, _unused, addr) = util::start_server(dir.path(), Some("pass".into())).await;
     let mut bad = GhostwriterClient::new(format!("ws://{}", addr), Some("wrong".into())).unwrap();
     assert!(bad.connect().await.is_err());
 

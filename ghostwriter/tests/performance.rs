@@ -1,14 +1,11 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ghostwriter::editor::{cursor::Cursor, key_handler::KeyHandler, rope::Rope};
-use ghostwriter::files::workspace::WorkspaceManager;
-use ghostwriter::network::{
-    client::GhostwriterClient, internal::InternalServer, protocol::MessageKind,
-    server::GhostwriterServer,
-};
+use ghostwriter::network::{internal::InternalServer, protocol::MessageKind};
 use serial_test::serial;
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tempfile::tempdir;
+mod util;
 
 fn key(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), KeyModifiers::empty())
@@ -85,13 +82,7 @@ async fn test_memory_usage_limits() {
 #[serial]
 async fn test_network_operation_performance() {
     let dir = tempdir().unwrap();
-    let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-    let server = GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws, None)
-        .await
-        .unwrap();
-    let addr = server.local_addr().unwrap();
-    let handle = tokio::spawn(server.run());
-    let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+    let (handle, mut client, _addr) = util::start_server(dir.path(), None).await;
     client.connect().await.unwrap();
     let start = Instant::now();
     client

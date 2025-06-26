@@ -1,23 +1,22 @@
+#![allow(dead_code)]
+
 use std::cell::{Ref, RefCell};
 use std::fmt;
 use std::ops::Range;
 
 /// Rope data structure storing text in fixed-size chunks.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct Rope {
     chunks: Vec<Chunk>,
     cache: RefCell<Option<String>>,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct Chunk {
     data: String,
     char_len: usize,
 }
 
-#[allow(dead_code)]
 const CHUNK_SIZE: usize = 64 * 1024;
 
 impl Chunk {
@@ -31,7 +30,6 @@ impl Chunk {
     }
 }
 
-#[allow(dead_code)]
 impl Rope {
     /// Create an empty rope.
     pub fn new() -> Self {

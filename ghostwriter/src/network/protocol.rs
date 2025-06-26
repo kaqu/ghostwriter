@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 
 use crate::files::search::SearchResult;
@@ -14,9 +15,9 @@ pub struct Message {
     pub kind: MessageKind,
 }
 
+#[allow(dead_code)]
 impl Message {
     /// Returns `true` if this message corresponds to the other by ID.
-    #[allow(dead_code)]
     pub fn matches(&self, other: &Message) -> bool {
         self.id == other.id
     }

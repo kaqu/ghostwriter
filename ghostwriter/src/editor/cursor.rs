@@ -2,13 +2,11 @@ use crate::editor::rope::Rope;
 
 /// Represents a cursor position within a text document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub struct Cursor {
     pub line: usize,
     pub column: usize,
 }
 
-#[allow(dead_code)]
 impl Cursor {
     /// Create a new cursor at the beginning of the document.
     pub fn new() -> Self {
@@ -216,7 +214,6 @@ pub(crate) fn index_to_line_col(text: &str, idx: usize) -> (usize, usize) {
     (l, c)
 }
 
-#[allow(dead_code)]
 fn is_word_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }

@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 pub struct EditorState {
     pub cursor: crate::editor::cursor::Cursor,
     pub selection: Option<crate::editor::selection::Selection>,
@@ -6,12 +5,10 @@ pub struct EditorState {
     pub scroll_y: u16,
 }
 
-#[allow(dead_code)]
 pub struct EditorWidget<'a> {
     rope: &'a crate::editor::rope::Rope,
 }
 
-#[allow(dead_code)]
 impl<'a> EditorWidget<'a> {
     pub fn new(rope: &'a crate::editor::rope::Rope) -> Self {
         Self { rope }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -9,13 +10,11 @@ use crate::network::{client::GhostwriterClient, server::GhostwriterServer};
 
 /// Internal server used for local editing mode.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct InternalServer {
     addr: SocketAddr,
     handle: JoinHandle<()>,
 }
 
-#[allow(dead_code)]
 impl InternalServer {
     /// Start a new internal server bound to 127.0.0.1 on a random port.
     pub async fn start(root: PathBuf, key: Option<String>) -> Result<(Self, GhostwriterClient)> {

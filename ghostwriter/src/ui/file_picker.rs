@@ -1,10 +1,11 @@
+#![allow(dead_code)]
+
 use crate::error::Result;
 use crate::files::workspace::WorkspaceManager;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use std::path::{Path, PathBuf};
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct VisibleItem {
     name: String,
@@ -12,7 +13,6 @@ struct VisibleItem {
     is_dir: bool,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FileNode {
     pub name: String,
@@ -23,7 +23,6 @@ pub struct FileNode {
     pub expanded: bool,
 }
 
-#[allow(dead_code)]
 impl FileNode {
     fn load_root(ws: &WorkspaceManager) -> Result<Self> {
         let mut node = FileNode {
@@ -95,7 +94,6 @@ impl FileNode {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct FilePicker {
     ws: WorkspaceManager,
@@ -105,7 +103,6 @@ pub struct FilePicker {
     visible: Vec<VisibleItem>,
 }
 
-#[allow(dead_code)]
 impl FilePicker {
     pub fn new(ws: WorkspaceManager) -> Result<Self> {
         let root = FileNode::load_root(&ws)?;

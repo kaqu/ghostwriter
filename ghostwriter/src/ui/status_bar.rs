@@ -1,6 +1,7 @@
+#![allow(dead_code)]
+
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockStatus {
     None,
@@ -8,7 +9,6 @@ pub enum LockStatus {
     ReadOnly,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionStatus {
     Online,
@@ -16,14 +16,12 @@ pub enum ConnectionStatus {
     Offline,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Local,
     Remote,
 }
 
-#[allow(dead_code)]
 pub struct StatusBar<'a> {
     pub file_path: &'a str,
     pub cursor: (usize, usize),
