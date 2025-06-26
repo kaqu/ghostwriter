@@ -17,6 +17,8 @@ cargo build --release --target <target-triple>
 ```
 
 Static linking flags are configured in `.cargo/config.toml` for Linux targets so the resulting binaries have no external dependencies.
+For Linux ARM64 builds make sure `crossbuild-essential-arm64` is installed so the
+correct cross-compiling linker and libraries are available.
 
 ## GitHub Release Builds
 
