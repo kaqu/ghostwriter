@@ -10,5 +10,6 @@ pub mod editor;
 pub mod error;
 pub mod files;
 pub mod network;
+pub mod security;
 pub mod state;
 pub mod ui;
