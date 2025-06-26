@@ -18,6 +18,11 @@ cargo build --release --target <target-triple>
 
 Static linking flags are configured in `.cargo/config.toml` for Linux targets so the resulting binaries have no external dependencies.
 
+## GitHub Release Builds
+
+Publishing a release on GitHub triggers CI to compile static binaries for Linux (x86_64 and ARM64) and macOS ARM64. The resulting archives are uploaded to the release page automatically.
+
+
 ## Usage Examples
 
 Start a server hosting a workspace directory:
