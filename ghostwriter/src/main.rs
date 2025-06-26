@@ -22,6 +22,25 @@ fn parse_addr(bind: &str, port: u16) -> Result<SocketAddr> {
         .map_err(|e| GhostwriterError::InvalidArgument(e.to_string()))
 }
 
+async fn run_client(args: &cli::Args) -> Result<()> {
+    let url = args
+        .connect
+        .clone()
+        .ok_or_else(|| GhostwriterError::InvalidArgument("missing connect url".into()))?;
+    let mut client = network::client::GhostwriterClient::new(url, args.key.clone())?;
+    client.connect().await?;
+    let resp = client
+        .request(
+            network::protocol::MessageKind::Ping,
+            std::time::Duration::from_secs(1),
+        )
+        .await?;
+    if matches!(resp.kind, network::protocol::MessageKind::Pong) {
+        println!("Connected to server");
+    }
+    Ok(())
+}
+
 async fn create_server(args: &cli::Args) -> Result<network::server::GhostwriterServer> {
     let dir = args
         .server
@@ -50,6 +69,13 @@ fn main() {
     }
     if args.server.is_some() {
         if let Err(e) = run_server(&args) {
+            error!("{e}");
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    } else if args.connect.is_some() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        if let Err(e) = rt.block_on(run_client(&args)) {
             error!("{e}");
             eprintln!("Error: {e}");
             std::process::exit(1);
@@ -86,6 +112,7 @@ mod tests {
     use crossterm::style::Stylize;
     use ratatui::widgets::Block;
     use serde::Serialize;
+    use serial_test::serial;
     use tokio::runtime::Runtime;
 
     #[test]
@@ -180,5 +207,46 @@ mod tests {
         };
         let res = create_server(&args).await;
         assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_run_client_invalid_url() {
+        let args = cli::Args {
+            path: None,
+            server: None,
+            connect: Some("bad://url".into()),
+            bind: "127.0.0.1".into(),
+            port: 0,
+            key: None,
+        };
+        let res = run_client(&args).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_run_client_success() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let ws = files::workspace::WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
+        let server =
+            network::server::GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws, None)
+                .await
+                .unwrap();
+        let addr = server.local_addr().unwrap();
+        let handle = tokio::spawn(server.run());
+        let args = cli::Args {
+            path: None,
+            server: None,
+            connect: Some(format!("ws://{}", addr)),
+            bind: "127.0.0.1".into(),
+            port: 0,
+            key: None,
+        };
+        let res = run_client(&args).await;
+        handle.abort();
+        let _ = handle.await;
+        assert!(res.is_ok());
     }
 }

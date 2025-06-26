@@ -17,3 +17,17 @@ cargo build --release --target <target-triple>
 ```
 
 Static linking flags are configured in `.cargo/config.toml` for Linux targets so the resulting binaries have no external dependencies.
+
+## Usage Examples
+
+Start a server hosting a workspace directory:
+
+```bash
+ghostwriter --server /workspace --port 8080
+```
+
+Connect to a remote server from another machine:
+
+```bash
+ghostwriter --connect ws://server:8080
+```
