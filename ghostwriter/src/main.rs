@@ -54,11 +54,23 @@ fn main() {
             eprintln!("Error: {e}");
             std::process::exit(1);
         }
+    } else if let Some(path) = args.path {
+        match app::App::open(path) {
+            Ok(mut app) => {
+                if let Err(e) = app.run() {
+                    error!("{e}");
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                error!("{e}");
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
     } else {
-        println!("Parsed arguments: {args:?}");
-        // Placeholder module calls
-        app::hello_app();
-        editor::hello_editor();
+        println!("No operation specified. Use --help for options.");
     }
 }
 
@@ -132,8 +144,8 @@ mod tests {
 
     #[test]
     fn test_modules_callable() {
-        // Check if placeholder functions from modules are callable
-        app::hello_app();
+        // Basic sanity checks on module API accessibility
+        let _app = app::App::open(std::env::temp_dir().join("tmp.txt"));
         editor::hello_editor();
         let _ = files::file_manager::FileManager::is_binary(b"test");
         let msg = network::protocol::Message {
