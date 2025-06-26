@@ -30,7 +30,7 @@ pub enum ConflictResolution {
 
 /// Watches a single file for external modifications.
 pub struct FileWatcher {
-    watcher: notify::RecommendedWatcher,
+    _watcher: notify::RecommendedWatcher,
     rx: Receiver<notify::Result<Event>>,
     path: PathBuf,
     last_modified: SystemTime,
@@ -45,7 +45,7 @@ impl FileWatcher {
         let metadata = std::fs::metadata(path)?;
         let last_modified = metadata.modified()?;
         Ok(Self {
-            watcher,
+            _watcher: watcher,
             rx,
             path: path.to_path_buf(),
             last_modified,

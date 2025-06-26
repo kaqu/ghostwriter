@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
@@ -10,10 +12,8 @@ pub struct AppState {
     pub recent_files: Vec<String>,
 }
 
-#[allow(dead_code)]
 pub struct StateManager;
 
-#[allow(dead_code)]
 impl StateManager {
     pub fn load(path: &Path) -> Result<AppState> {
         match fs::read_to_string(path) {

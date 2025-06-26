@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-
 pub enum DiffOp<'a> {
     Equal(&'a str),
     Insert(&'a str),

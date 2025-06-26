@@ -1,12 +1,10 @@
 use ghostwriter::files::file_manager::{FileContents, FileManager};
-use ghostwriter::files::workspace::WorkspaceManager;
-use ghostwriter::network::{
-    client::GhostwriterClient, protocol::MessageKind, server::GhostwriterServer,
-};
+use ghostwriter::network::protocol::MessageKind;
 use serial_test::serial;
 use std::fs::File;
 use std::time::{Duration, Instant};
 use tempfile::tempdir;
+mod util;
 
 const ONE_GB: u64 = 1_024 * 1_024 * 1_024;
 
@@ -14,17 +12,10 @@ const ONE_GB: u64 = 1_024 * 1_024 * 1_024;
 #[serial]
 async fn test_remote_search_functionality() {
     let dir = tempdir().unwrap();
-    let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
     let file_path = dir.path().join("file.txt");
     std::fs::write(&file_path, b"hello world").unwrap();
 
-    let server = GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws, None)
-        .await
-        .unwrap();
-    let addr = server.local_addr().unwrap();
-    let handle = tokio::spawn(server.run());
-
-    let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+    let (handle, mut client, _addr) = util::start_server(dir.path(), None).await;
     client.connect().await.unwrap();
     let resp = client
         .request(

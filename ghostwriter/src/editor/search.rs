@@ -1,11 +1,11 @@
 //! Text search module
+#![allow(dead_code)]
 
 use regex::Regex;
 use std::ops::Range;
 
 use super::rope::Rope;
 
-#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct Search {
     query: String,
@@ -15,7 +15,6 @@ pub struct Search {
     current: usize,
 }
 
-#[allow(dead_code)]
 impl Search {
     pub fn new() -> Self {
         Self {

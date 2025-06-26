@@ -17,6 +17,8 @@ fn test_linux_file_locking() {
     assert!(!file.try_lock_exclusive().unwrap());
 }
 
+mod util;
+
 #[cfg(target_os = "macos")]
 #[test]
 fn test_macos_file_locking() {
@@ -38,24 +40,14 @@ fn test_macos_file_locking() {
 
 #[tokio::test]
 async fn test_cross_platform_websockets() {
-    use ghostwriter::files::workspace::WorkspaceManager;
     use ghostwriter::network::client::ConnectionStatus;
-    use ghostwriter::network::client::GhostwriterClient;
     use ghostwriter::network::protocol::MessageKind;
-    use ghostwriter::network::server::GhostwriterServer;
     use std::time::Duration;
     use tempfile::tempdir;
     use tokio::time::timeout;
 
     let dir = tempdir().unwrap();
-    let ws = WorkspaceManager::new(dir.path().to_path_buf()).unwrap();
-    let server = GhostwriterServer::bind("127.0.0.1:0".parse().unwrap(), ws, None)
-        .await
-        .unwrap();
-    let addr = server.local_addr().unwrap();
-    let handle = tokio::spawn(server.run());
-
-    let mut client = GhostwriterClient::new(format!("ws://{}", addr), None).unwrap();
+    let (handle, mut client, _addr) = util::start_server(dir.path(), None).await;
     timeout(Duration::from_secs(1), client.connect())
         .await
         .unwrap()
