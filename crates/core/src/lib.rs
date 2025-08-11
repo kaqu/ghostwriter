@@ -3,8 +3,10 @@ pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 
+pub mod buffer;
 pub mod transport;
 
+pub use buffer::RopeBuffer;
 pub use transport::Transport;
 
 #[cfg(test)]
