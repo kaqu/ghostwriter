@@ -4,7 +4,8 @@ This file defines rules for AI agents working in this repository.
 
 ## Reference Documents
 - `PRD.md` describes the application requirements and architecture.
-- `PLAN.md` lists implementation tasks with acceptance criteria.
+- `PLAN.md` lists implementation plan with acceptance criteria.
+- `TODO.md` lists implementation tasks with current status.
 
 ## Commit Guidelines
 - Use **Conventional Commits** style messages (`feat:`, `fix:`, `docs:`, `chore:`...).
