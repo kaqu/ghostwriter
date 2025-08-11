@@ -1,6 +1,6 @@
 # Phase 0 — Bootstrap & Plumbing
 
-* [ ] **Create workspace & crates** — root + `crates/{proto,core,server,client}`; set release flags (LTO, panic=abort).
+* [x] **Create workspace & crates** — root + `crates/{proto,core,server,client}`; set release flags (LTO, panic=abort).
 * [ ] **CLI scaffold** — clap parser, mode enum (local / `--server` / `--connect`) and logging init.
 * [ ] **Protocol envelope** — `Envelope{v,type,data}` + enums; MsgPack encode/decode helpers.
 * [ ] **Transport shim** — WS binary send/recv wrappers (tungstenite) + `Ping/Pong` timer.
