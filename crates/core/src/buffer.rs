@@ -56,6 +56,13 @@ impl RopeBuffer {
         self.rope.remove(start..end);
     }
 
+    /// Return the text within `range` as a [`String`].
+    pub fn slice(&self, range: Range<usize>) -> String {
+        let start = self.rope.byte_to_char(range.start);
+        let end = self.rope.byte_to_char(range.end);
+        self.rope.slice(start..end).to_string()
+    }
+
     /// Convert a byte index to a (line, column) pair.
     /// Line and column are both zero-based, and column counts bytes from
     /// the start of the line.
