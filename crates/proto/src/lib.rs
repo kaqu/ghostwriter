@@ -84,6 +84,40 @@ pub struct Copy {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StyleSpan {
+    pub start_col: u16,
+    pub end_col: u16,
+    #[serde(rename = "class")]
+    pub class_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Line {
+    pub text: String,
+    pub spans: Vec<StyleSpan>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Cursor {
+    pub line: u64,
+    pub col: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Frame {
+    pub id: String,
+    pub kind: String,
+    pub doc_v: u64,
+    pub first_line: u64,
+    pub cols: u16,
+    pub rows: u16,
+    pub lines: Vec<Line>,
+    pub cursors: Vec<Cursor>,
+    pub status_left: String,
+    pub status_right: String,
+}
+
 pub fn encode<T: Serialize>(envelope: &Envelope<T>) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     rmp_serde::to_vec(envelope)
 }
@@ -125,5 +159,33 @@ mod tests {
         let decoded: Envelope<Copy> = decode(&encoded).expect("decode");
         assert_eq!(decoded.ty, MessageType::Copy);
         assert_eq!(decoded.data, copy);
+    }
+
+    #[test]
+    fn frame_roundtrip() {
+        let frame = Frame {
+            id: "editor".into(),
+            kind: "editor".into(),
+            doc_v: 1,
+            first_line: 0,
+            cols: 80,
+            rows: 2,
+            lines: vec![Line {
+                text: "hello".into(),
+                spans: vec![StyleSpan {
+                    start_col: 0,
+                    end_col: 5,
+                    class_name: "sel".into(),
+                }],
+            }],
+            cursors: vec![Cursor { line: 0, col: 5 }],
+            status_left: "L".into(),
+            status_right: "R".into(),
+        };
+        let env = Envelope::new(MessageType::Frame, frame.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<Frame> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::Frame);
+        assert_eq!(decoded.data, frame);
     }
 }

@@ -413,6 +413,7 @@ name = "ghostwriter-core"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "ghostwriter-proto",
  "ropey",
  "tempfile",
  "tokio",
