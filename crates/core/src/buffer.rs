@@ -81,7 +81,7 @@ impl RopeBuffer {
         let end_char = self.rope.byte_to_char(byte_idx);
         let slice = self.rope.slice(..end_char).to_string();
         UnicodeSegmentation::grapheme_indices(slice.as_str(), true)
-            .last()
+            .next_back()
             .map(|(idx, _)| idx)
     }
 
