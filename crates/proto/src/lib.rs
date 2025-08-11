@@ -84,6 +84,30 @@ pub struct Copy {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Cursor {
+    pub row: u16,
+    pub col: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StyleSpan {
+    pub row: u16,
+    pub start_col: u16,
+    pub end_col: u16,
+    #[serde(rename = "class")]
+    pub class: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Frame {
+    pub first_line: u64,
+    pub lines: Vec<String>,
+    pub spans: Vec<StyleSpan>,
+    pub cursors: Vec<Cursor>,
+    pub status: String,
+}
+
 pub fn encode<T: Serialize>(envelope: &Envelope<T>) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     rmp_serde::to_vec(envelope)
 }
@@ -125,5 +149,21 @@ mod tests {
         let decoded: Envelope<Copy> = decode(&encoded).expect("decode");
         assert_eq!(decoded.ty, MessageType::Copy);
         assert_eq!(decoded.data, copy);
+    }
+
+    #[test]
+    fn frame_roundtrip() {
+        let frame = Frame {
+            first_line: 0,
+            lines: vec!["hi".into()],
+            spans: vec![],
+            cursors: vec![Cursor { row: 0, col: 0 }],
+            status: "ok".into(),
+        };
+        let env = Envelope::new(MessageType::Frame, frame.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<Frame> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::Frame);
+        assert_eq!(decoded.data, frame);
     }
 }

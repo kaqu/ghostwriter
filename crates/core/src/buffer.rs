@@ -63,6 +63,24 @@ impl RopeBuffer {
         self.rope.slice(start..end).to_string()
     }
 
+    /// Return up to `max_lines` lines starting from `first_line`.
+    /// Lines are returned without their terminating newline characters.
+    pub fn slice_lines(&self, first_line: usize, max_lines: usize) -> Vec<String> {
+        let total = self.rope.len_lines();
+        let mut out = Vec::new();
+        for i in first_line..(first_line + max_lines).min(total) {
+            let mut line = self.rope.line(i).to_string();
+            if line.ends_with('\n') {
+                line.pop();
+                if line.ends_with('\r') {
+                    line.pop();
+                }
+            }
+            out.push(line);
+        }
+        out
+    }
+
     /// Convert a byte index to a (line, column) pair.
     /// Line and column are both zero-based, and column counts bytes from
     /// the start of the line.
@@ -160,5 +178,14 @@ mod tests {
         assert_eq!(buf.grapheme_left(7), Some(3));
         assert_eq!(buf.grapheme_left(3), Some(0));
         assert_eq!(buf.grapheme_left(0), None);
+    }
+
+    #[test]
+    fn slice_lines() {
+        let buf = RopeBuffer::from_text("a\nb\nc\nd");
+        assert_eq!(
+            buf.slice_lines(1, 2),
+            vec!["b".to_string(), "c".to_string()]
+        );
     }
 }
