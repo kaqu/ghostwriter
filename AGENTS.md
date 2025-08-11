@@ -14,6 +14,7 @@ This file defines rules for AI agents working in this repository.
 ## Development Workflow
 1. Format code before committing
 2. Run linters and unit tests
+3. Ensure the pre-push hook passes before pushing
 
 ## Rust Edition
 - The workspace targets **Rust 2024** using the stable toolchain. New crates
@@ -39,6 +40,15 @@ To run tests, navigate to the `ghostwriter` directory and run:
 cargo test
 ```
 Our GitHub CI also runs `cargo test` automatically for every pull request.
+
+## Git hooks
+A pre-push hook in `.githooks/pre-push` runs formatting, linting and tests before
+allowing a push. Enable it by running:
+```bash
+git config core.hooksPath .githooks
+```
+The hook aborts the push if any check fails, so ensure `cargo clippy -- -D warnings`
+passes before pushing changes.
 
 ## Test coverage
 - Every change must include unit tests exercising all new logic
