@@ -22,13 +22,10 @@ jobs:
         run: rustup component add rustfmt clippy
 
       - name: Check formatting
-        working-directory: ./ghostwriter
-        run: cargo fmt -- --check
+        run: cargo fmt --all --check
 
       - name: Run clippy
-        working-directory: ./ghostwriter
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run cargo test
-        working-directory: ./ghostwriter # Added working-directory
         run: cargo test

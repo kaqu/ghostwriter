@@ -15,6 +15,10 @@ This file defines rules for AI agents working in this repository.
 1. Format code before committing
 2. Run linters and unit tests
 
+## Rust Edition
+- The workspace targets **Rust 2024** using the stable toolchain. New crates
+  should set `edition.workspace = true` to inherit this edition.
+
 ## Running formatter
 The repo includes a `rust-toolchain.toml` file which installs the `rustfmt` and
 `clippy` components automatically. To format the code, navigate to the
