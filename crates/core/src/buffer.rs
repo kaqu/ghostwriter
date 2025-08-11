@@ -43,6 +43,31 @@ impl RopeBuffer {
         self.rope.to_string()
     }
 
+    /// Return up to `max_lines` lines starting from `first_line`.
+    /// Lines are returned without trailing newlines.
+    pub fn slice_lines(&self, first_line: usize, max_lines: usize) -> Vec<String> {
+        let total = self.rope.len_lines();
+        let mut out = Vec::new();
+        for i in first_line..std::cmp::min(first_line + max_lines, total) {
+            let mut line = self.rope.line(i).to_string();
+            if line.ends_with('\n') {
+                line.pop();
+            }
+            out.push(line);
+        }
+        out
+    }
+
+    /// Return the byte index at the start of `line`.
+    pub fn line_to_byte(&self, line: usize) -> usize {
+        self.rope.line_to_byte(line)
+    }
+
+    /// Total number of lines in the buffer.
+    pub fn len_lines(&self) -> usize {
+        self.rope.len_lines()
+    }
+
     /// Insert `text` at the given byte index.
     pub fn insert(&mut self, byte_idx: usize, text: &str) {
         let char_idx = self.rope.byte_to_char(byte_idx);
