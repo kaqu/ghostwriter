@@ -1,3 +1,5 @@
+pub mod tui;
+
 /// Client entry point.
 pub fn run() -> &'static str {
     "client"
