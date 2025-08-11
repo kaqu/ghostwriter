@@ -27,3 +27,7 @@ ghostwriter-client = { path = "crates/client" }
 [profile.release]
 lto = true
 panic = "abort"
+
+[dev-dependencies]
+assert_cmd = "2.0.12"
+predicates = "3.1.3"
