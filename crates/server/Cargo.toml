@@ -4,3 +4,6 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+ghostwriter-core = { path = "../core" }
+ghostwriter-proto = { path = "../proto" }
+tokio = { version = "1.47.1", features = ["full"] }
