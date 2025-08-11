@@ -1,3 +1,5 @@
+pub mod session;
+
 /// Server entry point.
 pub fn run() -> &'static str {
     "server"

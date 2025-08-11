@@ -443,6 +443,11 @@ dependencies = [
 [[package]]
 name = "ghostwriter-server"
 version = "0.1.0"
+dependencies = [
+ "ghostwriter-core",
+ "ghostwriter-proto",
+ "tokio",
+]
 
 [[package]]
 name = "gimli"
