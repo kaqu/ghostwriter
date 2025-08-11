@@ -8,21 +8,6 @@
 - **Remote Ready**: Seamless local and remote editing with identical user experience
 - **Security First**: Strict workspace sandboxing and single-user model
 
-## Cross-Platform Compatibility
-
-Ghostwriter builds as a single static binary on Linux targets and dynamically for macOS. The project is tested on Linux x86_64, Linux ARM64 and macOS ARM64 to ensure identical behavior. To build for another target install the appropriate Rust target and run:
-
-```bash
-cargo build --release --target <target-triple>
-```
-
-Static linking flags are configured in `.cargo/config.toml` for Linux targets so the resulting binaries have no external dependencies.
-
-## GitHub Release Builds
-
-Publishing a release on GitHub triggers CI to compile static binaries for Linux (x86_64 and ARM64) and macOS ARM64. The resulting archives are uploaded to the release page automatically.
-
-
 ## Usage Examples
 
 Start a server hosting a workspace directory:
