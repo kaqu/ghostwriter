@@ -31,6 +31,7 @@ pub enum MessageType {
     Delete,
     Move,
     Select,
+    Copy,
     Scroll,
     Resize,
     Search,
@@ -78,6 +79,11 @@ pub struct Insert {
     pub seq: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Copy {
+    pub text: String,
+}
+
 pub fn encode<T: Serialize>(envelope: &Envelope<T>) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     rmp_serde::to_vec(envelope)
 }
@@ -107,5 +113,17 @@ mod tests {
         assert_eq!(decoded.v, PROTOCOL_VERSION);
         assert_eq!(decoded.ty, MessageType::Hello);
         assert_eq!(decoded.data, hello);
+    }
+
+    #[test]
+    fn copy_roundtrip() {
+        let copy = Copy {
+            text: "selection".into(),
+        };
+        let env = Envelope::new(MessageType::Copy, copy.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<Copy> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::Copy);
+        assert_eq!(decoded.data, copy);
     }
 }
