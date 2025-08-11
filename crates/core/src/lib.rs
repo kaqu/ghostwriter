@@ -3,6 +3,10 @@ pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 
+pub mod transport;
+
+pub use transport::Transport;
+
 #[cfg(test)]
 mod tests {
     use super::*;

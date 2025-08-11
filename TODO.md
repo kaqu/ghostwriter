@@ -3,7 +3,7 @@
 * [x] **Create workspace & crates** — root + `crates/{proto,core,server,client}`; set release flags (LTO, panic=abort).
 * [x] **CLI scaffold** — clap parser, mode enum (local / `--server` / `--connect`) and logging init.
 * [x] **Protocol envelope** — `Envelope{v,type,data}` + enums; MsgPack encode/decode helpers.
-* [ ] **Transport shim** — WS binary send/recv wrappers (tungstenite) + `Ping/Pong` timer.
+* [x] **Transport shim** — WS binary send/recv wrappers (tungstenite) + `Ping/Pong` timer.
 * [ ] **Dev tooling** — rustfmt, clippy, test harness, basic GitHub Actions CI (build/test).
 
 ---
