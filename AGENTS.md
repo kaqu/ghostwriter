@@ -40,6 +40,11 @@ cargo test
 ```
 Our GitHub CI also runs `cargo test` automatically for every pull request.
 
+## Test coverage
+- Every change must include unit tests exercising all new logic
+- Strive for 100% coverage on modified code using `cargo tarpaulin`
+- Run `cargo tarpaulin` locally and ensure coverage remains complete
+
 ## Running a single test
 To execute a specific test, pass its full module path to `cargo test`:
 ```bash
