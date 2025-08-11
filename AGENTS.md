@@ -61,4 +61,8 @@ use `cargo test -- --ignored` to run tests marked with `#[ignore]`.
 - Run `cargo fmt` and `cargo clippy` to maintain consistent style and catch
   common mistakes
 
+## Dependencies
+- Use the latest available stable crate versions in `Cargo.toml`
+- Run `cargo update` whenever dependencies change to refresh `Cargo.lock`
+
 Update this file with additional rules (tests, linting, style) as the project grows.

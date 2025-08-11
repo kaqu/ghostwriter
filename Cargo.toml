@@ -16,11 +16,11 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+anyhow = "1.0.98"
+clap = { version = "4.5.43", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["full"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["fmt", "env-filter"] }
 ghostwriter-server = { path = "crates/server" }
 ghostwriter-client = { path = "crates/client" }
 
