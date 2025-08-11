@@ -10,6 +10,7 @@ futures-util = "0.3.31"
 ropey = "1.6.1"
 unicode-segmentation = "1.11.0"
 ghostwriter-proto = { path = "../proto" }
+rand = "0.8.5"
 
 [dev-dependencies]
 tempfile = "3.10.1"

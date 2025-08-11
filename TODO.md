@@ -14,7 +14,7 @@
 * [x] **RopeBuffer (edit ops)** — `insert/delete`, byte↔line/col, grapheme left/right.
 * [x] **Undo/Redo stack** — linear history, coalescing adjacent inserts.
 * [x] **Viewport composer** — slice by lines, minimal style spans, status line, cursor(s).
-* [ ] **Atomic save** — temp+rename+fsync(dir); preserve EOL; configurable debounce (100ms).
+* [x] **Atomic save** — temp+rename+fsync(dir); preserve EOL; configurable debounce (100ms).
 * [ ] **WAL writer/reader** — append before apply; CRC; replay on start; compaction threshold.
 * [ ] **Minimal session actor** — holds buffer, doc\_v, selection, debounce; emits Frames.
 * [ ] **TUI bootstrap (ratatui)** — raw mode, draw frame, status, cursor placement.
