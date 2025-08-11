@@ -11,7 +11,7 @@
 # Phase 1 — Core Editor (Local In-Proc Loop)
 
 * [x] **RopeBuffer (read/open)** — load file with UTF-8 + invalid-byte tracking (hex fallback flag).
-* [ ] **RopeBuffer (edit ops)** — `insert/delete`, byte↔line/col, grapheme left/right.
+* [x] **RopeBuffer (edit ops)** — `insert/delete`, byte↔line/col, grapheme left/right.
 * [ ] **Undo/Redo stack** — linear history, coalescing adjacent inserts.
 * [ ] **Viewport composer** — slice by lines, minimal style spans, status line, cursor(s).
 * [ ] **Atomic save** — temp+rename+fsync(dir); preserve EOL; configurable debounce (100ms).

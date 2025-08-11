@@ -1,5 +1,6 @@
 use ropey::Rope;
-use std::{io, path::Path};
+use std::{io, ops::Range, path::Path};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Rope-based text buffer with invalid UTF-8 tracking.
 pub struct RopeBuffer {
@@ -8,6 +9,14 @@ pub struct RopeBuffer {
 }
 
 impl RopeBuffer {
+    /// Create a new `RopeBuffer` from the provided text.
+    pub fn from_text(text: &str) -> Self {
+        Self {
+            rope: Rope::from_str(text),
+            has_invalid: false,
+        }
+    }
+
     /// Open a file from disk into a `RopeBuffer`.
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let bytes = std::fs::read(path)?;
@@ -33,6 +42,61 @@ impl RopeBuffer {
     pub fn text(&self) -> String {
         self.rope.to_string()
     }
+
+    /// Insert `text` at the given byte index.
+    pub fn insert(&mut self, byte_idx: usize, text: &str) {
+        let char_idx = self.rope.byte_to_char(byte_idx);
+        self.rope.insert(char_idx, text);
+    }
+
+    /// Delete the bytes in `range`.
+    pub fn delete(&mut self, range: Range<usize>) {
+        let start = self.rope.byte_to_char(range.start);
+        let end = self.rope.byte_to_char(range.end);
+        self.rope.remove(start..end);
+    }
+
+    /// Convert a byte index to a (line, column) pair.
+    /// Line and column are both zero-based, and column counts bytes from
+    /// the start of the line.
+    pub fn byte_to_line_col(&self, byte_idx: usize) -> (usize, usize) {
+        let line = self.rope.byte_to_line(byte_idx);
+        let line_start = self.rope.line_to_byte(line);
+        (line, byte_idx - line_start)
+    }
+
+    /// Convert a (line, column) pair to a byte index.
+    /// Line and column are zero-based, and column counts bytes from the
+    /// start of the line.
+    pub fn line_col_to_byte(&self, line: usize, col: usize) -> usize {
+        self.rope.line_to_byte(line) + col
+    }
+
+    /// Return the byte index of the grapheme cluster immediately to the left
+    /// of `byte_idx`, or `None` if at the start of the buffer.
+    pub fn grapheme_left(&self, byte_idx: usize) -> Option<usize> {
+        if byte_idx == 0 {
+            return None;
+        }
+        let end_char = self.rope.byte_to_char(byte_idx);
+        let slice = self.rope.slice(..end_char).to_string();
+        UnicodeSegmentation::grapheme_indices(slice.as_str(), true)
+            .last()
+            .map(|(idx, _)| idx)
+    }
+
+    /// Return the byte index of the grapheme cluster immediately to the right
+    /// of `byte_idx`, or `None` if at the end of the buffer.
+    pub fn grapheme_right(&self, byte_idx: usize) -> Option<usize> {
+        if byte_idx >= self.rope.len_bytes() {
+            return None;
+        }
+        let start_char = self.rope.byte_to_char(byte_idx);
+        let slice = self.rope.slice(start_char..).to_string();
+        UnicodeSegmentation::graphemes(slice.as_str(), true)
+            .next()
+            .map(|g| byte_idx + g.len())
+    }
 }
 
 #[cfg(test)]
@@ -57,5 +121,37 @@ mod tests {
         let buf = RopeBuffer::open(file.path()).unwrap();
         assert!(buf.has_invalid());
         assert_eq!(buf.text(), "fo\u{FFFD}o");
+    }
+
+    #[test]
+    fn insert_and_delete() {
+        let mut buf = RopeBuffer::from_text("hello");
+        buf.insert(5, " world");
+        assert_eq!(buf.text(), "hello world");
+        buf.delete(5..11);
+        assert_eq!(buf.text(), "hello");
+    }
+
+    #[test]
+    fn byte_line_col_roundtrip() {
+        let buf = RopeBuffer::from_text("one\ntwo\n");
+        let (line, col) = buf.byte_to_line_col(5); // 't' in "two"
+        assert_eq!((line, col), (1, 1));
+        let byte = buf.line_col_to_byte(line, col);
+        assert_eq!(byte, 5);
+    }
+
+    #[test]
+    fn grapheme_navigation() {
+        let buf = RopeBuffer::from_text("a\u{0301}😊b");
+        // Text bytes: a + accent (3 bytes), emoji (4), b (1) => total 8 bytes
+        assert_eq!(buf.grapheme_right(0), Some(3));
+        assert_eq!(buf.grapheme_right(3), Some(7));
+        assert_eq!(buf.grapheme_right(7), Some(8));
+        assert_eq!(buf.grapheme_right(8), None);
+        assert_eq!(buf.grapheme_left(8), Some(7));
+        assert_eq!(buf.grapheme_left(7), Some(3));
+        assert_eq!(buf.grapheme_left(3), Some(0));
+        assert_eq!(buf.grapheme_left(0), None);
     }
 }

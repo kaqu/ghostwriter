@@ -8,6 +8,7 @@ tokio = { version = "1.47.1", features = ["full"] }
 tokio-tungstenite = { version = "0.27.0", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3.31"
 ropey = "1.6.1"
+unicode-segmentation = "1.11.0"
 
 [dev-dependencies]
 tempfile = "3.10.1"
