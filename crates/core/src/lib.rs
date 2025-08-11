@@ -5,9 +5,11 @@ pub fn add(a: i32, b: i32) -> i32 {
 
 pub mod buffer;
 pub mod transport;
+pub mod undo;
 
 pub use buffer::RopeBuffer;
 pub use transport::Transport;
+pub use undo::UndoStack;
 
 #[cfg(test)]
 mod tests {
