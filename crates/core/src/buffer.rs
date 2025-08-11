@@ -2,10 +2,18 @@ use ropey::Rope;
 use std::{io, ops::Range, path::Path};
 use unicode_segmentation::UnicodeSegmentation;
 
+/// Line ending style.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Eol {
+    Lf,
+    CrLf,
+}
+
 /// Rope-based text buffer with invalid UTF-8 tracking.
 pub struct RopeBuffer {
     rope: Rope,
     has_invalid: bool,
+    eol: Eol,
 }
 
 impl RopeBuffer {
@@ -14,22 +22,30 @@ impl RopeBuffer {
         Self {
             rope: Rope::from_str(text),
             has_invalid: false,
+            eol: Eol::Lf,
         }
     }
 
     /// Open a file from disk into a `RopeBuffer`.
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let bytes = std::fs::read(path)?;
-        let (text, has_invalid) = match String::from_utf8(bytes) {
+        let (mut text, has_invalid) = match String::from_utf8(bytes) {
             Ok(s) => (s, false),
             Err(e) => {
                 let bytes = e.into_bytes();
                 (String::from_utf8_lossy(&bytes).into_owned(), true)
             }
         };
+        let eol = if text.contains("\r\n") {
+            text = text.replace("\r\n", "\n");
+            Eol::CrLf
+        } else {
+            Eol::Lf
+        };
         Ok(Self {
             rope: Rope::from_str(&text),
             has_invalid,
+            eol,
         })
     }
 
@@ -129,13 +145,27 @@ impl RopeBuffer {
             .next()
             .map(|g| byte_idx + g.len())
     }
+
+    /// Save the buffer to `path`, preserving original EOL style.
+    pub fn save_to<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
+        let mut text = self.rope.to_string();
+        if self.eol == Eol::CrLf {
+            text = text.replace('\n', "\r\n");
+        }
+        crate::fs::atomic_write(path.as_ref(), text.as_bytes())
+    }
+
+    /// Return the line ending style of this buffer.
+    pub fn eol(&self) -> Eol {
+        self.eol
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, tempdir};
 
     #[test]
     fn open_valid_utf8() {
@@ -185,5 +215,30 @@ mod tests {
         assert_eq!(buf.grapheme_left(7), Some(3));
         assert_eq!(buf.grapheme_left(3), Some(0));
         assert_eq!(buf.grapheme_left(0), None);
+    }
+
+    #[test]
+    fn open_and_save_preserves_crlf() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        std::fs::write(&path, b"one\r\ntwo\r\n").unwrap();
+        let buf = RopeBuffer::open(&path).unwrap();
+        assert_eq!(buf.text(), "one\ntwo\n");
+        assert_eq!(buf.eol(), Eol::CrLf);
+        // modify and save
+        buf.save_to(&path).unwrap();
+        let data = std::fs::read(&path).unwrap();
+        assert_eq!(data, b"one\r\ntwo\r\n");
+    }
+
+    #[test]
+    fn save_preserves_lf() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("lf.txt");
+        let buf = RopeBuffer::from_text("hello\n");
+        buf.save_to(&path).unwrap();
+        let data = std::fs::read(&path).unwrap();
+        assert_eq!(data, b"hello\n");
+        assert_eq!(buf.eol(), Eol::Lf);
     }
 }
