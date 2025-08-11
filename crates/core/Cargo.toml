@@ -11,6 +11,7 @@ ropey = "1.6.1"
 unicode-segmentation = "1.11.0"
 ghostwriter-proto = { path = "../proto" }
 rand = "0.8.5"
+crc32fast = "1.4.0"
 
 [dev-dependencies]
 tempfile = "3.10.1"

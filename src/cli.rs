@@ -85,13 +85,6 @@ mod tests {
             .unwrap()
     }
 
-    fn run_default() {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(run())
-            .unwrap();
-    }
-
     #[test]
     fn default_is_local() {
         assert_eq!(parse_mode(&[]), Mode::Local);
@@ -186,6 +179,12 @@ mod tests {
 
     #[test]
     fn run_defaults_to_local() {
-        run_default();
+        assert_eq!(
+            run_args(Args {
+                server: None,
+                connect: None,
+            }),
+            "client",
+        );
     }
 }
