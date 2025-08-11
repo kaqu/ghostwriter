@@ -15,7 +15,7 @@
 * [x] **Undo/Redo stack** — linear history, coalescing adjacent inserts.
 * [x] **Viewport composer** — slice by lines, minimal style spans, status line, cursor(s).
 * [x] **Atomic save** — temp+rename+fsync(dir); preserve EOL; configurable debounce (100ms).
-* [ ] **WAL writer/reader** — append before apply; CRC; replay on start; compaction threshold.
+* [x] **WAL writer/reader** — append before apply; CRC; replay on start; compaction threshold.
 * [ ] **Minimal session actor** — holds buffer, doc\_v, selection, debounce; emits Frames.
 * [ ] **TUI bootstrap (ratatui)** — raw mode, draw frame, status, cursor placement.
 * [ ] **Key→command mapping** — translate keystrokes to `Insert/Delete/Move/Select/...`.
