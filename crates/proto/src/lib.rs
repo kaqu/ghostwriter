@@ -118,6 +118,24 @@ pub struct Frame {
     pub status_right: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ErrorCode {
+    Unauthorized,
+    Invalid,
+    Unsupported,
+    Busy,
+    Io,
+    Sandbox,
+    Conflict,
+    RateLimit,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ErrorMsg {
+    pub code: ErrorCode,
+    pub msg: String,
+}
+
 pub fn encode<T: Serialize>(envelope: &Envelope<T>) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     rmp_serde::to_vec(envelope)
 }
@@ -187,5 +205,18 @@ mod tests {
         let decoded: Envelope<Frame> = decode(&encoded).expect("decode");
         assert_eq!(decoded.ty, MessageType::Frame);
         assert_eq!(decoded.data, frame);
+    }
+
+    #[test]
+    fn error_roundtrip() {
+        let err = ErrorMsg {
+            code: ErrorCode::Busy,
+            msg: "busy".into(),
+        };
+        let env = Envelope::new(MessageType::Error, err.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<ErrorMsg> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::Error);
+        assert_eq!(decoded.data, err);
     }
 }

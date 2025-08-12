@@ -584,10 +584,12 @@ dependencies = [
 name = "ghostwriter-server"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "ghostwriter-core",
  "ghostwriter-proto",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
