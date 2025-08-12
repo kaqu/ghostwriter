@@ -7,6 +7,8 @@ edition.workspace = true
 ghostwriter-core = { path = "../core" }
 ghostwriter-proto = { path = "../proto" }
 tokio = { version = "1.47.1", features = ["full"] }
+tokio-tungstenite = { version = "0.27.0", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3.31"
 
 [dev-dependencies]
 tempfile = "3.10.1"
