@@ -61,6 +61,17 @@ pub struct Hello {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Resize {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RequestFrame {
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Ack {
     pub seq: u64,
     pub doc_v: u64,
@@ -205,6 +216,28 @@ mod tests {
         let decoded: Envelope<Frame> = decode(&encoded).expect("decode");
         assert_eq!(decoded.ty, MessageType::Frame);
         assert_eq!(decoded.data, frame);
+    }
+
+    #[test]
+    fn resize_roundtrip() {
+        let resize = Resize { cols: 80, rows: 24 };
+        let env = Envelope::new(MessageType::Resize, resize.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<Resize> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::Resize);
+        assert_eq!(decoded.data, resize);
+    }
+
+    #[test]
+    fn request_frame_roundtrip() {
+        let req = RequestFrame {
+            reason: "initial".into(),
+        };
+        let env = Envelope::new(MessageType::RequestFrame, req.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<RequestFrame> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::RequestFrame);
+        assert_eq!(decoded.data, req);
     }
 
     #[test]
