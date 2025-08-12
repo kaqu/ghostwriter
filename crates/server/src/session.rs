@@ -119,10 +119,10 @@ impl Session {
                     self.emit_frame(&tx).await;
                 }
                 SessionCmd::Save => {
-                    if self.hex_bytes.is_none() {
-                        if let Ok(buf) = self.buffer.lock() {
-                            let _ = buf.save_to(&self.path);
-                        }
+                    if self.hex_bytes.is_none()
+                        && let Ok(buf) = self.buffer.lock()
+                    {
+                        let _ = buf.save_to(&self.path);
                     }
                 }
             }
