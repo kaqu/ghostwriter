@@ -61,6 +61,11 @@ pub struct Hello {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Auth {
+    pub secret: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Resize {
     pub cols: u16,
     pub rows: u16,
@@ -176,6 +181,18 @@ mod tests {
         assert_eq!(decoded.v, PROTOCOL_VERSION);
         assert_eq!(decoded.ty, MessageType::Hello);
         assert_eq!(decoded.data, hello);
+    }
+
+    #[test]
+    fn auth_roundtrip() {
+        let auth = Auth {
+            secret: "topsecret".into(),
+        };
+        let env = Envelope::new(MessageType::Auth, auth.clone());
+        let encoded = encode(&env).expect("encode");
+        let decoded: Envelope<Auth> = decode(&encoded).expect("decode");
+        assert_eq!(decoded.ty, MessageType::Auth);
+        assert_eq!(decoded.data, auth);
     }
 
     #[test]
