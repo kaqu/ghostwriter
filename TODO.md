@@ -20,7 +20,7 @@
 * [x] **TUI bootstrap (ratatui)** — raw mode, draw frame, status, cursor placement.
 * [x] **Key→command mapping** — translate keystrokes to `Insert/Delete/Move/Select/...`.
 * [x] **Local loop glue** — in-proc channels client↔session (no WS yet); open/save workflow.
-* [ ] **Hex viewer (RO)** — 16B/row, ASCII gutter; auto-trigger on invalid UTF-8.
+* [x] **Hex viewer (RO)** — 16B/row, ASCII gutter; auto-trigger on invalid UTF-8.
 * [ ] **Acceptance pack #1** — tests for edit/undo/save/WAL; crash-replay works.
 
 ---

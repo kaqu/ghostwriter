@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use ghostwriter_core::{Debouncer, RopeBuffer, ViewportParams, compose_viewport};
+use ghostwriter_core::{Debouncer, RopeBuffer, ViewportParams, compose_hex, compose_viewport};
 use ghostwriter_proto::Frame;
 use tokio::sync::mpsc;
 
@@ -28,6 +28,7 @@ pub struct SessionHandle {
 #[allow(dead_code)]
 struct Session {
     buffer: Arc<Mutex<RopeBuffer>>,
+    hex_bytes: Option<Vec<u8>>,
     path: PathBuf,
     doc_v: u64,
     selection: Range<usize>,
@@ -48,15 +49,31 @@ impl Session {
             Err(e) if e.kind() == io::ErrorKind::NotFound => RopeBuffer::from_text(""),
             Err(e) => return Err(e),
         };
-        Ok(Self::spawn(buffer, path, cols, rows))
+        let hex_bytes = if buffer.has_invalid() {
+            std::fs::read(&path).ok()
+        } else {
+            None
+        };
+        Ok(Self::spawn_inner(buffer, hex_bytes, path, cols, rows))
     }
 
     /// Spawn a session actor with the provided buffer and viewport size.
     pub fn spawn(buffer: RopeBuffer, path: PathBuf, cols: u16, rows: u16) -> SessionHandle {
+        Self::spawn_inner(buffer, None, path, cols, rows)
+    }
+
+    fn spawn_inner(
+        buffer: RopeBuffer,
+        hex_bytes: Option<Vec<u8>>,
+        path: PathBuf,
+        cols: u16,
+        rows: u16,
+    ) -> SessionHandle {
         let (cmd_tx, cmd_rx) = mpsc::channel(8);
         let (frame_tx, frame_rx) = mpsc::channel(8);
         let session = Session {
             buffer: Arc::new(Mutex::new(buffer)),
+            hex_bytes,
             path,
             doc_v: 0,
             selection: 0..0,
@@ -79,29 +96,33 @@ impl Session {
         while let Some(cmd) = rx.recv().await {
             match cmd {
                 SessionCmd::Insert { text } => {
-                    let pos = self.selection.end;
-                    {
-                        let mut buf = self.buffer.lock().unwrap();
-                        buf.insert(pos, &text);
-                    }
-                    let new_pos = pos + text.len();
-                    self.selection = new_pos..new_pos;
-                    self.doc_v += 1;
-                    let buffer = Arc::clone(&self.buffer);
-                    let path = self.path.clone();
-                    self.debounce.call(move || {
-                        if let Ok(buf) = buffer.lock() {
-                            let _ = buf.save_to(&path);
+                    if self.hex_bytes.is_none() {
+                        let pos = self.selection.end;
+                        {
+                            let mut buf = self.buffer.lock().unwrap();
+                            buf.insert(pos, &text);
                         }
-                    });
-                    self.emit_frame(&tx).await;
+                        let new_pos = pos + text.len();
+                        self.selection = new_pos..new_pos;
+                        self.doc_v += 1;
+                        let buffer = Arc::clone(&self.buffer);
+                        let path = self.path.clone();
+                        self.debounce.call(move || {
+                            if let Ok(buf) = buffer.lock() {
+                                let _ = buf.save_to(&path);
+                            }
+                        });
+                        self.emit_frame(&tx).await;
+                    }
                 }
                 SessionCmd::RequestFrame => {
                     self.emit_frame(&tx).await;
                 }
                 SessionCmd::Save => {
-                    if let Ok(buf) = self.buffer.lock() {
-                        let _ = buf.save_to(&self.path);
+                    if self.hex_bytes.is_none() {
+                        if let Ok(buf) = self.buffer.lock() {
+                            let _ = buf.save_to(&self.path);
+                        }
                     }
                 }
             }
@@ -118,7 +139,17 @@ impl Session {
             status_left: "",
             status_right: "",
         };
-        let frame = {
+        let frame = if let Some(bytes) = &self.hex_bytes {
+            compose_hex(
+                bytes,
+                self.first_line,
+                self.cols,
+                self.rows,
+                self.doc_v,
+                "",
+                "",
+            )
+        } else {
             let buf = self.buffer.lock().unwrap();
             compose_viewport(
                 &buf,
@@ -190,5 +221,20 @@ mod tests {
         let _ = handle.frames.recv().await.unwrap();
         let contents = std::fs::read_to_string(&path).unwrap();
         assert_eq!(contents, " therehi");
+    }
+
+    #[tokio::test]
+    async fn opens_invalid_file_in_hex_mode() {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(&[0xFF, 0x00, b'A']).unwrap();
+        let path = file.path().to_path_buf();
+        let mut handle = open(&path, 80, 24).unwrap();
+        handle.cmd.send(SessionCmd::RequestFrame).await.unwrap();
+        let frame = handle.frames.recv().await.unwrap();
+        assert_eq!(frame.kind, "hex");
+        assert_eq!(
+            frame.lines[0].text,
+            "FF 00 41                                         |..A",
+        );
     }
 }
