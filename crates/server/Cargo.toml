@@ -7,3 +7,6 @@ edition.workspace = true
 ghostwriter-core = { path = "../core" }
 ghostwriter-proto = { path = "../proto" }
 tokio = { version = "1.47.1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3.10.1"

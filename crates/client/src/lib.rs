@@ -1,4 +1,5 @@
 pub mod keymap;
+pub mod local;
 pub mod tui;
 
 /// Client entry point.

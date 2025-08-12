@@ -1,4 +1,9 @@
-use std::ops::Range;
+use std::{
+    io,
+    ops::Range,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use ghostwriter_core::{Debouncer, RopeBuffer, ViewportParams, compose_viewport};
 use ghostwriter_proto::Frame;
@@ -10,6 +15,8 @@ pub enum SessionCmd {
     Insert { text: String },
     /// Request the current frame without modifying state.
     RequestFrame,
+    /// Save the current buffer to disk immediately.
+    Save,
 }
 
 /// Handle for interacting with a running session.
@@ -20,7 +27,8 @@ pub struct SessionHandle {
 
 #[allow(dead_code)]
 struct Session {
-    buffer: RopeBuffer,
+    buffer: Arc<Mutex<RopeBuffer>>,
+    path: PathBuf,
     doc_v: u64,
     selection: Range<usize>,
     debounce: Debouncer,
@@ -32,12 +40,24 @@ struct Session {
 
 #[allow(dead_code)]
 impl Session {
+    /// Open a file from `path` and spawn a session actor with the provided viewport size.
+    pub fn open<P: AsRef<Path>>(path: P, cols: u16, rows: u16) -> io::Result<SessionHandle> {
+        let path = path.as_ref().to_path_buf();
+        let buffer = match RopeBuffer::open(&path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => RopeBuffer::from_text(""),
+            Err(e) => return Err(e),
+        };
+        Ok(Self::spawn(buffer, path, cols, rows))
+    }
+
     /// Spawn a session actor with the provided buffer and viewport size.
-    pub fn spawn(buffer: RopeBuffer, cols: u16, rows: u16) -> SessionHandle {
+    pub fn spawn(buffer: RopeBuffer, path: PathBuf, cols: u16, rows: u16) -> SessionHandle {
         let (cmd_tx, cmd_rx) = mpsc::channel(8);
         let (frame_tx, frame_rx) = mpsc::channel(8);
         let session = Session {
-            buffer,
+            buffer: Arc::new(Mutex::new(buffer)),
+            path,
             doc_v: 0,
             selection: 0..0,
             debounce: Debouncer::default(),
@@ -60,15 +80,29 @@ impl Session {
             match cmd {
                 SessionCmd::Insert { text } => {
                     let pos = self.selection.end;
-                    self.buffer.insert(pos, &text);
+                    {
+                        let mut buf = self.buffer.lock().unwrap();
+                        buf.insert(pos, &text);
+                    }
                     let new_pos = pos + text.len();
                     self.selection = new_pos..new_pos;
                     self.doc_v += 1;
-                    self.debounce.call(|| {});
+                    let buffer = Arc::clone(&self.buffer);
+                    let path = self.path.clone();
+                    self.debounce.call(move || {
+                        if let Ok(buf) = buffer.lock() {
+                            let _ = buf.save_to(&path);
+                        }
+                    });
                     self.emit_frame(&tx).await;
                 }
                 SessionCmd::RequestFrame => {
                     self.emit_frame(&tx).await;
+                }
+                SessionCmd::Save => {
+                    if let Ok(buf) = self.buffer.lock() {
+                        let _ = buf.save_to(&self.path);
+                    }
                 }
             }
         }
@@ -84,25 +118,42 @@ impl Session {
             status_left: "",
             status_right: "",
         };
-        let frame = compose_viewport(
-            &self.buffer,
-            self.first_line,
-            self.cols,
-            self.rows,
-            self.hscroll,
-            params,
-        );
+        let frame = {
+            let buf = self.buffer.lock().unwrap();
+            compose_viewport(
+                &buf,
+                self.first_line,
+                self.cols,
+                self.rows,
+                self.hscroll,
+                params,
+            )
+        };
         let _ = tx.send(frame).await;
     }
+}
+
+/// Open a file from `path` and spawn a session actor.
+pub fn open<P: AsRef<Path>>(path: P, cols: u16, rows: u16) -> io::Result<SessionHandle> {
+    Session::open(path, cols, rows)
+}
+
+/// Spawn a session with the provided `buffer` for testing purposes.
+pub fn spawn(buffer: RopeBuffer, path: PathBuf, cols: u16, rows: u16) -> SessionHandle {
+    Session::spawn(buffer, path, cols, rows)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn insert_emits_frame() {
-        let mut handle = Session::spawn(RopeBuffer::from_text(""), 80, 24);
+        let file = NamedTempFile::new().unwrap();
+        let mut handle =
+            Session::spawn(RopeBuffer::from_text(""), file.path().to_path_buf(), 80, 24);
         handle
             .cmd
             .send(SessionCmd::Insert { text: "hi".into() })
@@ -118,5 +169,26 @@ mod tests {
         let frame2 = handle.frames.recv().await.unwrap();
         assert_eq!(frame2.doc_v, 1);
         assert_eq!(frame2.lines[0].text, "hi");
+    }
+
+    #[tokio::test]
+    async fn open_and_save_roundtrip() {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "hi").unwrap();
+        let path = file.path().to_path_buf();
+        let mut handle = open(&path, 80, 24).unwrap();
+        handle
+            .cmd
+            .send(SessionCmd::Insert {
+                text: " there".into(),
+            })
+            .await
+            .unwrap();
+        let _ = handle.frames.recv().await.unwrap();
+        handle.cmd.send(SessionCmd::Save).await.unwrap();
+        handle.cmd.send(SessionCmd::RequestFrame).await.unwrap();
+        let _ = handle.frames.recv().await.unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, " therehi");
     }
 }
