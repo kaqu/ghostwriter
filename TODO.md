@@ -17,7 +17,7 @@
 * [x] **Atomic save** — temp+rename+fsync(dir); preserve EOL; configurable debounce (100ms).
 * [x] **WAL writer/reader** — append before apply; CRC; replay on start; compaction threshold.
 * [x] **Minimal session actor** — holds buffer, doc\_v, selection, debounce; emits Frames.
-* [ ] **TUI bootstrap (ratatui)** — raw mode, draw frame, status, cursor placement.
+* [x] **TUI bootstrap (ratatui)** — raw mode, draw frame, status, cursor placement.
 * [ ] **Key→command mapping** — translate keystrokes to `Insert/Delete/Move/Select/...`.
 * [ ] **Local loop glue** — in-proc channels client↔session (no WS yet); open/save workflow.
 * [ ] **Hex viewer (RO)** — 16B/row, ASCII gutter; auto-trigger on invalid UTF-8.
