@@ -47,7 +47,7 @@ pub async fn run() -> Result<()> {
 async fn run_with_args(args: Args) -> Result<&'static str> {
     init_logging();
     let output = dispatch(args.mode()?);
-    println!("{}", output);
+    println!("{output}");
     Ok(output)
 }
 
