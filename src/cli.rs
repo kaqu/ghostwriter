@@ -12,6 +12,10 @@ pub struct Args {
     /// Connect to a remote server at the given URL
     #[arg(long, value_name = "URL", conflicts_with = "server")]
     pub connect: Option<String>,
+
+    /// Shared secret for authentication
+    #[arg(long, env = "GHOSTWRITER_SECRET")]
+    pub secret: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -46,12 +50,12 @@ pub async fn run() -> Result<()> {
 
 async fn run_with_args(args: Args) -> Result<&'static str> {
     init_logging();
-    let output = dispatch(args.mode()?);
+    let output = dispatch(args.mode()?, args.secret);
     println!("{output}");
     Ok(output)
 }
 
-fn dispatch(mode: Mode) -> &'static str {
+fn dispatch(mode: Mode, _secret: Option<String>) -> &'static str {
     match mode {
         Mode::Local => {
             tracing::info!("mode = local");
@@ -115,21 +119,25 @@ mod tests {
         let args = Args {
             server: Some(PathBuf::from("/tmp")),
             connect: Some("ws://localhost".into()),
+            secret: None,
         };
         assert!(args.mode().is_err());
     }
 
     #[test]
     fn dispatches_local() {
-        assert_eq!(dispatch(Mode::Local), "client");
+        assert_eq!(dispatch(Mode::Local, None), "client");
     }
 
     #[test]
     fn dispatches_server() {
         assert_eq!(
-            dispatch(Mode::Server {
-                root: PathBuf::from("/tmp"),
-            }),
+            dispatch(
+                Mode::Server {
+                    root: PathBuf::from("/tmp")
+                },
+                None
+            ),
             "server"
         );
     }
@@ -137,9 +145,12 @@ mod tests {
     #[test]
     fn dispatches_connect() {
         assert_eq!(
-            dispatch(Mode::Connect {
-                url: "ws://localhost".into(),
-            }),
+            dispatch(
+                Mode::Connect {
+                    url: "ws://localhost".into()
+                },
+                None
+            ),
             "client"
         );
     }
@@ -149,7 +160,8 @@ mod tests {
         assert_eq!(
             run_args(Args {
                 server: None,
-                connect: None
+                connect: None,
+                secret: None,
             }),
             "client"
         );
@@ -161,6 +173,7 @@ mod tests {
             run_args(Args {
                 server: Some(PathBuf::from("/tmp")),
                 connect: None,
+                secret: None,
             }),
             "server"
         );
@@ -172,6 +185,7 @@ mod tests {
             run_args(Args {
                 server: None,
                 connect: Some("ws://localhost".into()),
+                secret: None,
             }),
             "client"
         );
@@ -183,6 +197,7 @@ mod tests {
             run_args(Args {
                 server: None,
                 connect: None,
+                secret: None,
             }),
             "client",
         );

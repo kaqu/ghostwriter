@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures_util::SinkExt;
-use ghostwriter_proto::{Envelope, Hello, MessageType, RequestFrame, Resize, encode};
+use ghostwriter_proto::{Auth, Envelope, Hello, MessageType, RequestFrame, Resize, encode};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
 use url::Url;
@@ -12,8 +12,9 @@ pub struct WsClient {
 
 impl WsClient {
     /// Connect to `url` and perform the Hello handshake. Sends a `RequestFrame`
-    /// with reason `"initial"` after connecting.
-    pub async fn connect(url: &str, cols: u16, rows: u16) -> Result<Self> {
+    /// with reason `"initial"` after connecting. If `secret` is provided,
+    /// sends an `Auth` message after `Hello`.
+    pub async fn connect(url: &str, cols: u16, rows: u16, secret: Option<&str>) -> Result<Self> {
         let url = Url::parse(url)?;
         let (mut ws, _resp) = connect_async(url.as_str()).await?;
 
@@ -26,6 +27,14 @@ impl WsClient {
         };
         let env = Envelope::new(MessageType::Hello, hello);
         ws.send(Message::Binary(encode(&env)?.into())).await?;
+
+        if let Some(secret) = secret {
+            let auth = Auth {
+                secret: secret.into(),
+            };
+            let env = Envelope::new(MessageType::Auth, auth);
+            ws.send(Message::Binary(encode(&env)?.into())).await?;
+        }
 
         let req = RequestFrame {
             reason: "initial".into(),
