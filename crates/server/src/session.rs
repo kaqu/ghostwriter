@@ -37,6 +37,7 @@ struct Session {
     rows: u16,
     first_line: usize,
     hscroll: u16,
+    status: String,
 }
 
 #[allow(dead_code)]
@@ -82,6 +83,7 @@ impl Session {
             rows,
             first_line: 0,
             hscroll: 0,
+            status: "server".into(),
         };
         tokio::spawn(async move {
             session.run(cmd_rx, frame_tx).await;
@@ -127,6 +129,12 @@ impl Session {
                 }
             }
         }
+
+        if self.hex_bytes.is_none()
+            && let Ok(buf) = self.buffer.lock()
+        {
+            let _ = buf.save_to(&self.path);
+        }
     }
 
     async fn emit_frame(&self, tx: &mpsc::Sender<Frame>) {
@@ -136,7 +144,7 @@ impl Session {
             selections: &selections,
             cursors: &cursors,
             doc_v: self.doc_v,
-            status_left: "",
+            status_left: &self.status,
             status_right: "",
         };
         let frame = if let Some(bytes) = &self.hex_bytes {
@@ -146,7 +154,7 @@ impl Session {
                 self.cols,
                 self.rows,
                 self.doc_v,
-                "",
+                &self.status,
                 "",
             )
         } else {
@@ -221,6 +229,29 @@ mod tests {
         let _ = handle.frames.recv().await.unwrap();
         let contents = std::fs::read_to_string(&path).unwrap();
         assert_eq!(contents, " therehi");
+    }
+
+    #[tokio::test]
+    async fn banner_and_save_on_exit() {
+        use tokio::time::{Duration, sleep};
+
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path().to_path_buf();
+        let SessionHandle { cmd, mut frames } = open(&path, 80, 24).unwrap();
+
+        cmd.send(SessionCmd::RequestFrame).await.unwrap();
+        let frame = frames.recv().await.unwrap();
+        assert_eq!(frame.status_left, "server");
+
+        cmd.send(SessionCmd::Insert { text: "hi".into() })
+            .await
+            .unwrap();
+        drop(cmd); // close channel to end session
+
+        sleep(Duration::from_millis(20)).await;
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, "hi");
     }
 
     #[tokio::test]
