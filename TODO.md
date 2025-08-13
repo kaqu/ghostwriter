@@ -30,7 +30,7 @@
 * [x] **WS acceptor (TCP/UDS)** — serve one active session; reject others with `Busy`.
 * [x] **Client WS connector** — `Hello` handshake, `RequestFrame` on connect/resize.
 * [x] **Auth (optional)** — Argon2id storage file, login flow, shared-secret env/CLI.
-* [ ] **Rate limiting** — 3/min per peer; error `RateLimit`; backoff hints.
+* [x] **Rate limiting** — 3/min per peer; error `RateLimit`; backoff hints.
 * [ ] **Session lifecycle** — clean shutdown, lock release, save on exit; server banner/status.
 * [ ] **Logging & audit** — JSON logs + audit of open/save/rename/delete/auth (no contents).
 * [ ] **Acceptance pack #2** — second client blocked; wrong password thrice ⇒ rate-limit.

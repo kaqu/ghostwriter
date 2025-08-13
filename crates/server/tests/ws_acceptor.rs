@@ -152,3 +152,56 @@ async fn accepts_valid_auth() {
     ws.close(None).await.unwrap();
     server.abort();
 }
+
+#[tokio::test]
+async fn rate_limits_connections() {
+    use tokio::time::{Duration, sleep, timeout};
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        acceptor::run_tcp(listener, None).await.unwrap();
+    });
+
+    // Three quick connections should succeed
+    for _ in 0..3 {
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+            .await
+            .unwrap();
+        let hello = Hello {
+            client_name: "c".into(),
+            client_ver: "1".into(),
+            cols: 80,
+            rows: 24,
+            truecolor: true,
+        };
+        let env = Envelope::new(MessageType::Hello, hello);
+        ws.send(Message::Binary(encode(&env).unwrap().into()))
+            .await
+            .unwrap();
+        ws.close(None).await.unwrap();
+        // Give the server a moment to clean up
+        sleep(Duration::from_millis(10)).await;
+    }
+
+    // Fourth connection should be rate-limited
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+        .await
+        .unwrap();
+
+    match timeout(Duration::from_millis(200), ws.next()).await {
+        Ok(Some(Ok(Message::Binary(data)))) => {
+            let env: Envelope<ErrorMsg> = decode(&data).unwrap();
+            assert_eq!(env.ty, MessageType::Error);
+            assert_eq!(env.data.code, ErrorCode::RateLimit);
+            assert!(env.data.msg.contains("retry"));
+        }
+        other => panic!("unexpected message: {other:?}"),
+    }
+    match timeout(Duration::from_millis(200), ws.next()).await {
+        Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {}
+        other => panic!("unexpected message: {other:?}"),
+    }
+
+    server.abort();
+}
