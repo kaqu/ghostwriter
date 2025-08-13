@@ -1,6 +1,10 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
@@ -25,6 +29,58 @@ where
         let _ = ws.send(Message::Binary(data.into())).await;
     }
     let _ = ws.close(None).await;
+}
+
+async fn handle_rate_limited<S>(mut ws: WebSocketStream<S>, retry_after: Duration)
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let env = Envelope::new(
+        MessageType::Error,
+        ErrorMsg {
+            code: ErrorCode::RateLimit,
+            msg: format!("rate limited; retry in {}s", retry_after.as_secs()),
+        },
+    );
+    if let Ok(data) = encode(&env) {
+        let _ = ws.send(Message::Binary(data.into())).await;
+    }
+    let _ = ws.close(None).await;
+}
+
+struct RateLimiter {
+    limit: usize,
+    window: Duration,
+    peers: HashMap<String, VecDeque<Instant>>,
+}
+
+impl RateLimiter {
+    fn new(limit: usize, window: Duration) -> Self {
+        Self {
+            limit,
+            window,
+            peers: HashMap::new(),
+        }
+    }
+
+    fn check(&mut self, peer: String) -> Option<Duration> {
+        let now = Instant::now();
+        let entry = self.peers.entry(peer).or_default();
+        while let Some(&t) = entry.front() {
+            if now.duration_since(t) > self.window {
+                entry.pop_front();
+            } else {
+                break;
+            }
+        }
+        if entry.len() >= self.limit {
+            let retry = self.window - now.duration_since(*entry.front().unwrap());
+            Some(retry)
+        } else {
+            entry.push_back(now);
+            None
+        }
+    }
 }
 
 async fn handle_connection<S>(
@@ -100,8 +156,14 @@ async fn handle_connection<S>(
 
 pub async fn run_tcp(listener: TcpListener, secret_hash: Option<String>) -> tokio::io::Result<()> {
     let active = Arc::new(AtomicBool::new(false));
+    let mut rl = RateLimiter::new(3, Duration::from_secs(60));
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, addr) = listener.accept().await?;
+        if let Some(retry) = rl.check(addr.ip().to_string()) {
+            let ws = accept_async(stream).await.map_err(std::io::Error::other)?;
+            handle_rate_limited(ws, retry).await;
+            continue;
+        }
         let ws = accept_async(stream).await.map_err(std::io::Error::other)?;
         if active.load(Ordering::SeqCst) {
             handle_busy(ws).await;
@@ -116,8 +178,14 @@ pub async fn run_tcp(listener: TcpListener, secret_hash: Option<String>) -> toki
 
 pub async fn run_uds(listener: UnixListener, secret_hash: Option<String>) -> tokio::io::Result<()> {
     let active = Arc::new(AtomicBool::new(false));
+    let mut rl = RateLimiter::new(3, Duration::from_secs(60));
     loop {
         let (stream, _) = listener.accept().await?;
+        if let Some(retry) = rl.check("local".into()) {
+            let ws = accept_async(stream).await.map_err(std::io::Error::other)?;
+            handle_rate_limited(ws, retry).await;
+            continue;
+        }
         let ws = accept_async(stream).await.map_err(std::io::Error::other)?;
         if active.load(Ordering::SeqCst) {
             handle_busy(ws).await;
