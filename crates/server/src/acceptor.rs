@@ -7,6 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::audit;
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use futures_util::{SinkExt, StreamExt};
 use ghostwriter_proto::{Auth, Envelope, ErrorCode, ErrorMsg, Hello, MessageType, decode, encode};
@@ -123,6 +124,7 @@ async fn handle_connection<S>(
                     .verify_password(env.data.secret.as_bytes(), &parsed)
                     .is_err()
                 {
+                    audit::log_auth("fail");
                     let env = Envelope::new(
                         MessageType::Error,
                         ErrorMsg {
@@ -136,6 +138,8 @@ async fn handle_connection<S>(
                     let _ = ws.close(None).await;
                     active.store(false, Ordering::SeqCst);
                     return;
+                } else {
+                    audit::log_auth("success");
                 }
             }
             _ => {

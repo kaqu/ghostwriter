@@ -40,7 +40,11 @@ pub fn init_logging() {
     use tracing_subscriber::{EnvFilter, fmt};
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let subscriber = fmt().with_env_filter(filter).finish();
+    let subscriber = fmt()
+        .with_env_filter(filter)
+        .json()
+        .flatten_event(true)
+        .finish();
     let _ = tracing::subscriber::set_global_default(subscriber);
 }
 

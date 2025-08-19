@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::audit;
 use ghostwriter_core::{Debouncer, RopeBuffer, ViewportParams, compose_hex, compose_viewport};
 use ghostwriter_proto::Frame;
 use tokio::sync::mpsc;
@@ -55,7 +56,9 @@ impl Session {
         } else {
             None
         };
-        Ok(Self::spawn_inner(buffer, hex_bytes, path, cols, rows))
+        let handle = Self::spawn_inner(buffer, hex_bytes, path.clone(), cols, rows);
+        audit::log_open(&path);
+        Ok(handle)
     }
 
     /// Spawn a session actor with the provided buffer and viewport size.
@@ -111,7 +114,8 @@ impl Session {
                         let path = self.path.clone();
                         self.debounce.call(move || {
                             if let Ok(buf) = buffer.lock() {
-                                let _ = buf.save_to(&path);
+                                let res = buf.save_to(&path);
+                                audit::log_save(&path, if res.is_ok() { "ok" } else { "err" });
                             }
                         });
                         self.emit_frame(&tx).await;
@@ -124,7 +128,8 @@ impl Session {
                     if self.hex_bytes.is_none()
                         && let Ok(buf) = self.buffer.lock()
                     {
-                        let _ = buf.save_to(&self.path);
+                        let res = buf.save_to(&self.path);
+                        audit::log_save(&self.path, if res.is_ok() { "ok" } else { "err" });
                     }
                 }
             }
@@ -133,7 +138,8 @@ impl Session {
         if self.hex_bytes.is_none()
             && let Ok(buf) = self.buffer.lock()
         {
-            let _ = buf.save_to(&self.path);
+            let res = buf.save_to(&self.path);
+            audit::log_save(&self.path, if res.is_ok() { "ok" } else { "err" });
         }
     }
 

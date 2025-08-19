@@ -10,7 +10,9 @@ tokio = { version = "1.47.1", features = ["full"] }
 tokio-tungstenite = { version = "0.27.0", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3.31"
 argon2 = { version = "0.5", features = ["std"] }
+tracing = "0.1.41"
 
 [dev-dependencies]
 tempfile = "3.10.1"
 rand_core = { version = "0.6", features = ["std"] }
+tracing-subscriber = { version = "0.3.19", features = ["fmt", "env-filter", "json"] }

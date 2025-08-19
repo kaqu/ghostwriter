@@ -205,3 +205,88 @@ async fn rate_limits_connections() {
 
     server.abort();
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn logs_auth_attempts() {
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::fmt::MakeWriter;
+
+    #[derive(Clone)]
+    struct Buf(Arc<Mutex<Vec<u8>>>);
+
+    impl<'a> MakeWriter<'a> for Buf {
+        type Writer = BufGuard;
+        fn make_writer(&'a self) -> Self::Writer {
+            BufGuard(self.0.clone())
+        }
+    }
+
+    struct BufGuard(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for BufGuard {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().write(buf)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.0.lock().unwrap().flush()
+        }
+    }
+
+    let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+    let subscriber = tracing_subscriber::fmt()
+        .json()
+        .with_writer(buf.clone())
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        let hash = argon2
+            .hash_password("s3cr3t".as_bytes(), &salt)
+            .unwrap()
+            .to_string();
+
+        let server = tokio::spawn(async move {
+            acceptor::run_tcp(listener, Some(hash)).await.unwrap();
+        });
+
+        // Fail auth
+        let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+            .await
+            .unwrap();
+
+        let hello = Hello {
+            client_name: "c".into(),
+            client_ver: "1".into(),
+            cols: 80,
+            rows: 24,
+            truecolor: true,
+        };
+        let env = Envelope::new(MessageType::Hello, hello);
+        ws.send(Message::Binary(encode(&env).unwrap().into()))
+            .await
+            .unwrap();
+
+        let auth = Auth {
+            secret: "bad".into(),
+        };
+        let env = Envelope::new(MessageType::Auth, auth);
+        ws.send(Message::Binary(encode(&env).unwrap().into()))
+            .await
+            .unwrap();
+
+        let _ = ws.next().await; // receive error
+        ws.close(None).await.unwrap();
+        server.abort();
+
+        let logs = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+        assert!(logs.contains("\"op\":\"auth\""));
+        assert!(logs.contains("\"result\":\"fail\""));
+    }
+    drop(_guard);
+}
